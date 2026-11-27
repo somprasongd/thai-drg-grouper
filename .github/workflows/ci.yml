@@ -50,7 +50,7 @@ jobs:
             cache/S0063.zip
           key: tcmc-${{ hashFiles('tools/setup.mjs') }}
       - run: npm ci
-      # tcmc.or.th does not send the files to some networks, GitHub-hosted runners among them.
+      # tcmc.or.th sometimes does not send the files to some networks, GitHub-hosted runners among them.
       # setup exits with 3 then, and the steps that need the files are skipped with a warning.
       # A self-hosted runner in Thailand (or a warm Actions cache) runs them in full.
       - id: setup
