@@ -127,16 +127,29 @@ async function getZip(src) {
     if (opt.offline) fail(`${src.file} is not in ${CACHE} and --offline was given`);
     const url = BASE_URL + src.file;
     console.log(`  ${src.file}: downloading ${url} (${mb(src.size)}, ${src.what})`);
-    let res;
-    try {
-        res = await fetch(url, { headers: { 'user-agent': 'thai-drg-grouper-setup' } });
-    } catch (e) {
-        fail(`cannot download ${url}: ${e.cause?.message ?? e.message}. Download it with a browser into ${CACHE} and run again.`);
+    let buf;
+    let why = '';
+    // a broken transfer gives other bytes, so try a few times before giving up
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        let res;
+        try {
+            res = await fetch(url, { headers: { 'user-agent': 'thai-drg-grouper-setup' } });
+            if (!res.ok) {
+                why = `HTTP ${res.status}`;
+            } else {
+                buf = Buffer.from(await res.arrayBuffer());
+                if (sha256(buf) === src.sha256) break;
+                why = `got ${buf.length} bytes (${res.headers.get('content-type')}) with checksum ${sha256(buf)}, expected ${src.size} bytes with ${src.sha256}`;
+                buf = null;
+            }
+        } catch (e) {
+            why = e.cause?.message ?? e.message;
+        }
+        console.log(`  ${src.file}: attempt ${attempt} failed: ${why}`);
     }
-    if (!res.ok) fail(`${url} answered HTTP ${res.status}. Download it with a browser into ${CACHE} and run again.`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (sha256(buf) !== src.sha256) {
-        fail(`${src.file} from TCMC has checksum ${sha256(buf)}, expected ${src.sha256}. TCMC may have published a new file; this grouper is only checked with the old one.`);
+    if (!buf) {
+        fail(`cannot get ${src.file} from ${url}: ${why}. If TCMC published a new file, this grouper is not checked with it. `
+            + `Otherwise download it with a browser into ${CACHE} and run again.`);
     }
     mkdirSync(CACHE, { recursive: true });
     writeFileSync(path, buf);
