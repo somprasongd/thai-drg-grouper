@@ -27,8 +27,9 @@ used only as a black box (cases in, results out) to compare results
 (tools/compare.mjs). It is not part of this repository.
 
 The Apache License covers the code of this repository only. It gives no right to the
-TCMC material: follow TCMC's own terms for the tables and books, and for any image or
-file that contains them (for example a Docker image built from this repository).
+TCMC material: follow TCMC's own terms for the tables and books, and for any volume,
+image or file that contains them. The published Docker image holds no TCMC material; it
+downloads the files from TCMC into its /data volume on the first start.
 
 This project is not made, checked or endorsed by TCMC. Check its results against the
 official TCMC grouper before using them for reimbursement.

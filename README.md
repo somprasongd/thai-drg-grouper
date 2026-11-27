@@ -18,7 +18,7 @@
 | ความเร็ว | 10,000 รายใน 0.35 วินาที เริ่มบริการภายใน 0.5 วินาที ใช้หน่วยความจำราว 180 MB |
 
 > **repository นี้ไม่มีไฟล์ของ สรท. เลย** ทั้งตาราง dbf, หนังสือ PDF และกฎที่สร้างจากหนังสือ
-> คำสั่ง `npm run setup` (หรือ `docker compose build`) จะดาวน์โหลดไฟล์จากเว็บไซต์ สรท. แล้วสร้างกฎบนเครื่องของคุณเอง ดู [NOTICE](NOTICE)
+> คำสั่ง `npm run setup` (หรือ Docker image ตอนเริ่มครั้งแรก) จะดาวน์โหลดไฟล์จากเว็บไซต์ สรท. แล้วสร้างกฎบนเครื่องของคุณเอง ดู [NOTICE](NOTICE)
 
 ---
 
@@ -44,36 +44,66 @@
 
 ต้องมี Docker Engine 23 ขึ้นไป หรือ Docker Desktop
 
+image สำเร็จรูปอยู่ที่ GitHub Packages: `ghcr.io/somprasongd/thai-drg-grouper` (linux/amd64 และ linux/arm64)
+
+| tag | ความหมาย |
+|---|---|
+| `1.0.0` | รุ่นนั้นพอดี |
+| `1.0`, `1` | รุ่นล่าสุดในชุดนั้น |
+| `latest` | release ล่าสุด |
+
+**image มีแต่โค้ด ไม่มีไฟล์ของ สรท.** เมื่อเริ่มครั้งแรก container จะรัน `npm run setup` ให้เอง:
+
+- ดาวน์โหลดไฟล์จาก สรท. 3 ไฟล์ รวมราว 71 MB ลง `/data/cache`
+- แปลงหนังสือเป็นข้อความด้วย poppler (`pdftotext`) แล้วสร้างกฎลง `/data/groupers`
+- ตรวจ `rules.json` ว่าตรงกับชุดที่เทียบกับ exe แล้ว (`--strict`) และลองจัดกลุ่ม 1 ราย
+- ใช้เวลาราว 1 นาทีบวกเวลาดาวน์โหลด ครั้งต่อไปใช้ไฟล์ใน volume เลย เริ่มบริการภายในไม่ถึง 1 วินาที
+
+### ด้วย compose
+
 ```sh
 git clone https://github.com/somprasongd/thai-drg-grouper.git
 cd thai-drg-grouper
 cp .env.example .env        # ไม่บังคับ
-docker compose up -d --build
+docker compose up -d        # ดึง image จาก ghcr.io
+docker compose logs -f      # ดูการสร้างกฎครั้งแรก
 ```
 
-ขั้นตอน build:
+ถ้าต้องการ build image เองจากโค้ด: `docker compose up -d --build`
 
-- ดาวน์โหลดไฟล์จาก สรท. 3 ไฟล์ รวมราว 71 MB
-- แปลงหนังสือเป็นข้อความด้วย poppler (`pdftotext`)
-- สร้างกฎ และตรวจด้วยรายทดสอบ 1 ราย
-- image สุดท้ายมีเพียง Node.js, โค้ด, ตาราง dbf 4 ไฟล์ และ `rules.json` (ไม่มี PDF และไม่มี exe)
+### ด้วย docker run
+
+```sh
+docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089   -v drg-data:/data --read-only --tmpfs /tmp --cap-drop ALL   ghcr.io/somprasongd/thai-drg-grouper:1
+```
 
 เมื่อพร้อมแล้ว:
 
 - หน้าเอกสาร (Swagger UI): <http://127.0.0.1:8089/docs>
 - ตรวจสถานะ: `curl http://127.0.0.1:8089/health`
 
+ค่าที่ image ตั้งไว้ (เปลี่ยนได้ด้วย `-e`):
+
+| ตัวแปร | ค่าใน image | ความหมาย |
+|---|---|---|
+| `GROUPERS_DIR` | `/data/groupers` | ที่เก็บตาราง dbf และ `rules.json` |
+| `TCMC_CACHE` | `/data/cache` | ที่เก็บ zip ของ สรท. |
+| `SETUP_ARGS` | `--strict` | ตัวเลือกของ `tools/setup.mjs` ตอนเริ่มครั้งแรก |
+
 คำแนะนำ:
 
-- ถ้าเครื่อง build ออกอินเทอร์เน็ตไม่ได้ ให้วาง `S0021.zip`, `S0062.zip`, `S0063.zip` ไว้ในโฟลเดอร์ `cache/` ก่อน build (ดาวน์โหลดได้จาก[ลิงก์ในหัวข้อ 12](#12-เอกสารอ้างอิง))
-- บางครั้งเว็บไซต์ สรท. ไม่ส่งไฟล์ให้บางเครือข่าย เช่น cloud และเครื่องในต่างประเทศ (ได้หน้าเว็บแทนไฟล์ zip)
-  - ถ้า build บนเครื่องแบบนั้น ให้ดาวน์โหลด zip ด้วยเบราว์เซอร์จากเครือข่ายในประเทศไทย แล้ววางใน `cache/` ก่อน build
+- เก็บ `/data` ไว้ใน volume เสมอ ไม่เช่นนั้นจะสร้างกฎใหม่ทุกครั้งที่สร้าง container
+- ถ้า image รุ่นใหม่ต้องการ `rules.json` ชุดอื่น container จะสร้างกฎใหม่ให้เองตอนเริ่ม
+- บางครั้งเว็บไซต์ สรท. ไม่ส่งไฟล์ให้บางเครือข่าย เช่น cloud และเครื่องในต่างประเทศ (ได้หน้าเว็บแทนไฟล์ zip) container จะหยุดด้วย exit code 3
+  - ให้ดาวน์โหลด `S0021.zip`, `S0062.zip`, `S0063.zip` ด้วยเบราว์เซอร์จากเครือข่ายในประเทศไทย ([ลิงก์ในหัวข้อ 12](#12-เอกสารอ้างอิง)) วางในโฟลเดอร์ `cache/`
+  - แล้วต่อโฟลเดอร์นั้นเข้า container: `-v ./cache:/data/cache:ro` (ใน compose.yaml มีบรรทัดตัวอย่างไว้แล้ว)
+  - เครื่องที่ออกอินเทอร์เน็ตไม่ได้ก็ใช้วิธีเดียวกัน
 - compose เปิดพอร์ตให้เฉพาะเครื่องนี้ (`127.0.0.1`) เป็นค่าเริ่มต้น
   - ถ้าให้เครื่องอื่นเรียกได้ ให้ตั้ง `DRG_BIND=0.0.0.0` และตั้ง `API_KEY` ใน `.env`
-- container รันด้วยผู้ใช้ `node` (ไม่ใช่ root), filesystem อ่านอย่างเดียว, ตัด capability ทั้งหมด และจำกัดหน่วยความจำ 512 MB
+- container รันด้วยผู้ใช้ `node` (ไม่ใช่ root), filesystem อ่านอย่างเดียว (เขียนได้เฉพาะ `/data` และ `/tmp`), ตัด capability ทั้งหมด และจำกัดหน่วยความจำ 512 MB
 
-> **อย่า push image ที่ build แล้วขึ้น registry สาธารณะ** เพราะ image มีตารางและกฎที่มาจากเอกสารของ สรท.
-> ใช้ภายในหน่วยงานของคุณเอง หรือขออนุญาต สรท. ก่อน
+> **volume `/data` มีตารางและกฎที่มาจากเอกสารของ สรท.** ใช้ภายในหน่วยงานของคุณเอง
+> อย่าเผยแพร่ volume นั้น หรือ image ที่ใส่ไฟล์เหล่านั้นไว้ ขึ้นที่สาธารณะ เว้นแต่ได้รับอนุญาตจาก สรท.
 
 ---
 
@@ -123,6 +153,7 @@ npm run setup -- --pdftotext=/path/to/pdftotext
 ตัวเลือก:
 
 - `--cache=<folder>`
+- `--out=<folder>` (โฟลเดอร์ groupers ที่จะเขียนลง ค่าเริ่มต้นคือ `GROUPERS_DIR` หรือ `groupers/`; Docker image ใช้ `/data/groupers`)
 - `--offline` (ไม่ดาวน์โหลด ใช้เฉพาะไฟล์ใน cache)
 - `--pdftotext=<path>`
 - `--keep-text` (เก็บข้อความที่แปลงไว้ใน `cache/text/`)
@@ -567,7 +598,14 @@ CI (GitHub Actions) มี 3 งาน:
 
 1. ทดสอบบน Node 20, 22, 24 โดยไม่มีข้อมูล สรท.
 2. รัน `setup --strict` แล้วทดสอบครบทุกข้อ
-3. build Docker image แล้วเรียก `/health` และจัดกลุ่ม 1 ราย (ไม่ push image)
+3. build Docker image, ตรวจว่าไม่มีไฟล์ของ สรท. ใน image, เริ่ม container ครั้งแรก (สร้างกฎจาก zip ใน cache) แล้วเรียก `/health` และจัดกลุ่ม 1 ราย จากนั้น restart เพื่อตรวจว่าใช้ไฟล์ใน volume เดิม (ไม่ push image)
+
+เมื่อ push tag `v*.*.*` งาน Release (`.github/workflows/release.yml`) จะ:
+
+1. ตรวจว่า tag ตรงกับ version ใน `package.json`
+2. build image และทดสอบเริ่มครั้งแรกแบบเดียวกับ CI (ถ้ามี zip ใน Actions cache)
+3. push image (linux/amd64, linux/arm64 พร้อม SBOM และ provenance) ไปที่ `ghcr.io/somprasongd/thai-drg-grouper`
+4. สร้าง GitHub release จากหัวข้อของรุ่นนั้นใน `CHANGELOG.md`
 
 ข้อจำกัด:
 
@@ -575,9 +613,9 @@ CI (GitHub Actions) มี 3 งาน:
   - เมื่อดาวน์โหลดสำเร็จครั้งหนึ่งแล้ว zip จะถูกเก็บใน Actions cache ของ repository นี้ และใช้ซ้ำในรอบถัดไป
 - ถ้ายังดาวน์โหลดไม่ได้ setup จะจบด้วยรหัส 3
   - งานที่ 2 ข้ามการทดสอบที่ต้องใช้ข้อมูล สรท. และแสดงคำเตือน
-  - งานที่ 3 build เฉพาะ stage ที่ไม่ต้องใช้ข้อมูล สรท.
+  - งานที่ 3 build image และตรวจว่าไม่มีไฟล์ของ สรท. แต่ข้ามการเริ่ม container
 - ถ้าต้องการให้ CI ทดสอบครบ ให้ใช้ self-hosted runner ที่อยู่ในเครือข่ายประเทศไทย
-- ทุกงานไม่เผยแพร่ไฟล์ของ สรท. ออกไป (ไม่ upload artifact และไม่ push image)
+- ทุกงานไม่เผยแพร่ไฟล์ของ สรท. ออกไป (ไม่ upload artifact; image ที่ push ใน Release มีแต่โค้ด)
 
 ---
 
@@ -603,6 +641,7 @@ thai-drg-grouper/
 │  └─ c63*.dbf           ดาวน์โหลดโดย npm run setup (ไม่อยู่ใน git)
 ├─ tools/
 │  ├─ setup.mjs          ดาวน์โหลดไฟล์ สรท. และสร้างกฎ
+│  ├─ start.mjs          จุดเริ่มของ Docker image: setup ครั้งแรก แล้วเริ่ม API
 │  ├─ build-rules.mjs    อ่านหนังสือเป็น rules.json
 │  ├─ compare.mjs        เทียบผลกับ TGrp6305.exe
 │  └─ exe/runner.js      ตัวรัน exe สำหรับ compare เท่านั้น
@@ -624,6 +663,7 @@ thai-drg-grouper/
 | `cannot get S0021.zip ... checksum ...` | สรท. เปลี่ยนไฟล์บนเว็บ หรือดาวน์โหลดไม่ครบ โปรแกรมนี้ตรวจแล้วเฉพาะไฟล์เดิม ให้ใช้ไฟล์เดิมใน `cache/` หรือเปิด issue |
 | `cannot get ... fetch failed` | เครื่องออกอินเทอร์เน็ตไม่ได้ ดาวน์โหลด zip ด้วยเบราว์เซอร์มาวางใน `cache/` แล้วรันใหม่ |
 | `WARNING: rules.json is not the same as the build compared with TGrp6305.exe` | `pdftotext` รุ่นอื่นตัดบรรทัดต่างกัน ให้ลองรุ่นอื่น หรือเทียบผลด้วย `npm run compare` ก่อนใช้ |
+| container หยุดด้วย exit code 3 | เว็บไซต์ สรท. ไม่ส่งไฟล์ให้เครื่องนี้ วาง zip ใน `cache/` แล้วต่อเข้า container ด้วย `-v ./cache:/data/cache:ro` (ดู[หัวข้อ 1](#1-เริ่มใช้งานด้วย-docker)) |
 | `400 unknown version` | รุ่นที่ขอไม่มี ดู `GET /api/v1/versions` |
 | `looks like a Buddhist-era year` | ส่งวันที่เป็นปี พ.ศ. ให้แปลงเป็น ค.ศ. |
 | ได้ ERR 10 ในทารก | ไม่ได้ส่ง `admitWeight` สำหรับอายุน้อยกว่า 28 วัน หรือส่งเป็นกรัม (ต้องเป็นกิโลกรัม) |

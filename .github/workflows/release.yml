@@ -1,0 +1,134 @@
+name: Release
+
+# git tag v1.2.3 && git push origin v1.2.3
+#   1. builds the image (code only, no TCMC files) for linux/amd64 and linux/arm64
+#   2. starts it once and groups one case, when the TCMC zips are in the Actions cache
+#   3. pushes it to ghcr.io/<owner>/thai-drg-grouper as 1.2.3, 1.2, 1 and latest
+#   4. makes the GitHub release with the notes of that version in CHANGELOG.md
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    name: image to ghcr.io
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag is the version in package.json
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json ($want)"
+            exit 1
+          fi
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.title=thai-drg-grouper
+      # smoke test of the image before it is pushed
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: thai-drg-grouper:release-test
+      # the zips are only in this repository's Actions cache (filled by CI); never in the image
+      - id: zips
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            cache/S0021.zip
+            cache/S0062.zip
+            cache/S0063.zip
+          key: tcmc-v1
+          restore-keys: tcmc-
+      - name: First start builds the rules, then groups one case
+        if: steps.zips.outputs.cache-matched-key != ''
+        run: |
+          docker run -d --name drg -p 127.0.0.1:8089:8089 --read-only --tmpfs /tmp --cap-drop ALL \
+            -v "$PWD/cache:/data/cache:ro" thai-drg-grouper:release-test
+          for i in $(seq 1 300); do
+            if curl -fsS http://127.0.0.1:8089/health; then break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' drg)" != "true" ]; then docker logs drg; exit 1; fi
+            sleep 1
+          done
+          curl -fsS -X POST http://127.0.0.1:8089/api/v1/group -H 'Content-Type: application/json' \
+            -d '{"sex":1,"dob":"1980-05-10","admitDate":"2024-01-10T08:30","dischargeDate":"2024-01-13T10:00","dischargeType":1,"pdx":"K35.8","procedures":["47.09"]}' \
+            | tee result.json
+          grep -q '"drg":"06070"' result.json
+          docker logs drg 2>&1 | grep -q 'rules.json is the same as the build that was compared'
+      - name: No TCMC zips in the cache
+        if: steps.zips.outputs.cache-matched-key == ''
+        run: echo "::warning::the TCMC zips are not in the Actions cache; the image was built but not started"
+      - if: always()
+        run: docker logs drg 2>&1 | grep -v '"level":30' || true
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+
+  release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    needs: image
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on && /^\[[^]]+\]: / { next }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::no section for $version in CHANGELOG.md"
+            exit 1
+          fi
+          cat >> notes.md <<EOF
+
+          ## Docker image
+
+          \`\`\`
+          docker pull ${IMAGE}:${version}
+          \`\`\`
+
+          image มีแต่โค้ด ไม่มีไฟล์ของ สรท. เมื่อเริ่มครั้งแรกจะดาวน์โหลดไฟล์จาก สรท.
+          แล้วสร้างกฎลง volume \`/data\` ดูวิธีใช้ใน README
+          EOF
+          cat notes.md
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md

@@ -5,7 +5,7 @@ node_modules
 logs
 coverage
 diff*.json
-cache/text
+cache
 groupers/*/*.dbf
 groupers/*/*.DBF
 groupers/*/native/rules.json

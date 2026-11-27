@@ -20,7 +20,10 @@
 - `npm run setup`: ดาวน์โหลดไฟล์จาก สรท. ตรวจ SHA-256 และสร้าง `rules.json`
 - `npm run compare`: เทียบผลกับ `TGrp6305.exe` แบบกล่องดำ
   - ตรงกัน 99.97% จาก 38,000 ราย
-- Dockerfile และ compose.yaml
-- CI บน GitHub Actions
+- Docker image ที่ `ghcr.io/somprasongd/thai-drg-grouper` (linux/amd64, linux/arm64)
+  - image มีแต่โค้ด ไม่มีไฟล์ของ สรท.
+  - เริ่มครั้งแรกจะดาวน์โหลดไฟล์และสร้างกฎลง volume `/data`
+- compose.yaml
+- CI และงาน Release บน GitHub Actions
 
 [1.0.0]: https://github.com/somprasongd/thai-drg-grouper/releases/tag/v1.0.0

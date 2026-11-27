@@ -48,7 +48,8 @@ jobs:
             cache/S0021.zip
             cache/S0062.zip
             cache/S0063.zip
-          key: tcmc-${{ hashFiles('tools/setup.mjs') }}
+          key: tcmc-v1
+          restore-keys: tcmc-
       - run: npm ci
       # tcmc.or.th sometimes does not send the files to some networks, GitHub-hosted runners among them.
       # setup exits with 3 then, and the steps that need the files are skipped with a warning.
@@ -62,7 +63,7 @@ jobs:
           if [ "$code" -eq 0 ]; then
             echo "data=yes" >> "$GITHUB_OUTPUT"
           elif [ "$code" -eq 3 ]; then
-            echo "::warning title=TCMC files not available::tcmc.or.th did not send the files to this runner; grouper tests and the full docker build are skipped"
+            echo "::warning title=TCMC files not available::tcmc.or.th did not send the files to this runner; grouper tests and the docker start test are skipped"
             echo "data=no" >> "$GITHUB_OUTPUT"
           else
             exit "$code"
@@ -73,35 +74,51 @@ jobs:
           REQUIRE_DATA: '1'
 
   docker:
-    name: docker build
+    name: docker image
     runs-on: ubuntu-latest
     needs: grouper
     steps:
       - uses: actions/checkout@v4
+      # the image holds the code only, so it builds without the TCMC files
+      - run: docker build -t thai-drg-grouper:ci .
+      - name: No TCMC files in the image
+        run: |
+          if docker run --rm --entrypoint sh thai-drg-grouper:ci -c 'find / -xdev \( -iname "c63*.dbf" -o -name rules.json -o -iname "S00[0-9][0-9].zip" -o -iname "TDrg*.pdf" -o -iname "TGrp*" \) 2>/dev/null | grep .'; then
+            echo "::error::TCMC files found in the image"
+            exit 1
+          fi
       - uses: actions/cache/restore@v4
+        if: needs.grouper.outputs.data == 'yes'
         with:
           path: |
             cache/S0021.zip
             cache/S0062.zip
             cache/S0063.zip
-          key: tcmc-${{ hashFiles('tools/setup.mjs') }}
-      # without the TCMC files only the stages that do not need them are built
-      - if: needs.grouper.outputs.data != 'yes'
-        run: docker build --target deps -t thai-drg-grouper:deps .
-      # build only: the image holds TCMC data and is not pushed anywhere
-      - if: needs.grouper.outputs.data == 'yes'
-        run: docker build -t thai-drg-grouper:ci .
-      - name: Start and check /health
+          key: tcmc-v1
+          restore-keys: tcmc-
+      # first start: setup builds the rules into the /data volume from the zips, then the API starts
+      - name: First start and one case
         if: needs.grouper.outputs.data == 'yes'
         run: |
-          docker run -d --name drg -p 127.0.0.1:8089:8089 --read-only --cap-drop ALL thai-drg-grouper:ci
-          for i in $(seq 1 30); do
+          docker run -d --name drg -p 127.0.0.1:8089:8089 --read-only --tmpfs /tmp --cap-drop ALL \
+            -v "$PWD/cache:/data/cache:ro" thai-drg-grouper:ci
+          for i in $(seq 1 300); do
             if curl -fsS http://127.0.0.1:8089/health; then break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' drg)" != "true" ]; then exit 1; fi
             sleep 1
           done
           curl -fsS -X POST http://127.0.0.1:8089/api/v1/group -H 'Content-Type: application/json' \
             -d '{"sex":1,"dob":"1980-05-10","admitDate":"2024-01-10T08:30","dischargeDate":"2024-01-13T10:00","dischargeType":1,"pdx":"K35.8","procedures":["47.09"]}' \
             | tee result.json
           grep -q '"drg":"06070"' result.json
+      - name: Second start uses the volume
+        if: needs.grouper.outputs.data == 'yes'
+        run: |
+          docker restart drg
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8089/health; then break; fi
+            sleep 1
+          done
+          test "$(docker logs drg 2>&1 | grep -c 'Running setup')" -eq 1
       - if: always() && needs.grouper.outputs.data == 'yes'
-        run: docker logs drg || true
+        run: docker logs drg 2>&1 | grep -v '"level":30' || true

@@ -1,7 +1,9 @@
 // npm run setup: get the TCMC files this grouper needs and build its rules.
 //
-//   node tools/setup.mjs [--cache=cache] [--offline] [--pdftotext=pdftotext] [--keep-text] [--strict]
+//   node tools/setup.mjs [--cache=cache] [--out=groupers] [--offline] [--pdftotext=pdftotext] [--keep-text] [--strict]
 //
+//   --out     groupers folder to write to (default: GROUPERS_DIR, else groupers/ of this repository).
+//             grouper.json and native/flow.json are copied there from the repository.
 //   --strict  stop when rules.json is not byte for byte the build that was compared with the exe
 //
 // 1. Downloads three zip files published by TCMC (www.tcmc.or.th) into the cache folder, or
@@ -19,7 +21,7 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +35,8 @@ const opt = Object.fromEntries(process.argv.slice(2).map((a) => {
 const CACHE = resolve(ROOT, opt.cache ?? 'cache');
 const PDFTOTEXT = opt.pdftotext ?? process.env.PDFTOTEXT ?? 'pdftotext';
 const VERSION = '6.3.4';
-const OUT_DIR = join(ROOT, 'groupers', VERSION);
+const SRC_DIR = join(ROOT, 'groupers', VERSION);
+const OUT_DIR = join(resolve(ROOT, opt.out ?? process.env.GROUPERS_DIR ?? 'groupers'), VERSION);
 const BASE_URL = 'https://www.tcmc.or.th/_content_images/download/fileupload/';
 // rules.json of the build that was compared with TGrp6305.exe (same with xpdf pdftotext 4.06 and poppler 26.01)
 const RULES_SHA256 = '268fc6a36250de3a3256d215e60c5203013bb7c4a3eaa5eebd253f1364729c68';
@@ -182,6 +185,11 @@ const work = mkdtempSync(join(tmpdir(), 'tdrg-setup-'));
 const textDir = opt['keep-text'] ? join(CACHE, 'text') : join(work, 'text');
 mkdirSync(textDir, { recursive: true });
 mkdirSync(join(OUT_DIR, 'native'), { recursive: true });
+if (OUT_DIR !== SRC_DIR) {
+    // the files kept in git go along (the Docker image writes the TCMC data to a volume of its own)
+    for (const f of ['grouper.json', join('native', 'flow.json')]) copyFileSync(join(SRC_DIR, f), join(OUT_DIR, f));
+    console.log(`  output: ${OUT_DIR}`);
+}
 
 try {
     for (const src of SOURCES) {
@@ -190,7 +198,7 @@ try {
             const data = zip.read(name);
             if (sha256(data) !== t.sha256) fail(`${name} in ${src.file} has an unexpected checksum`);
             writeFileSync(join(OUT_DIR, t.to), data);
-            console.log(`  -> groupers/${VERSION}/${t.to}`);
+            console.log(`  -> ${t.to}`);
         }
         for (const book of src.books ?? []) {
             const pdf = join(work, book);
@@ -204,7 +212,7 @@ try {
     console.log('building rules');
     execFileSync(process.execPath, [join(ROOT, 'tools', 'build-rules.mjs'), textDir, rulesFile], { stdio: 'inherit' });
     const rulesSha = sha256(readFileSync(rulesFile));
-    console.log(`  -> groupers/${VERSION}/native/rules.json  sha256 ${rulesSha}`);
+    console.log(`  -> native/rules.json  sha256 ${rulesSha}`);
     if (rulesSha === RULES_SHA256) {
         console.log('  rules.json is the same as the build that was compared with TGrp6305.exe');
     } else {
@@ -225,4 +233,4 @@ const r = g.group({
 });
 if (r.DRG !== '06070' || r.RW !== 1.2127) fail(`check case gave DRG ${r.DRG} RW ${r.RW}, expected 06070 1.2127`);
 console.log('check case: appendectomy -> DRG 06070, RW 1.2127  OK');
-console.log('done. Start the API with: npm start');
+console.log(OUT_DIR === SRC_DIR ? 'done. Start the API with: npm start' : 'done.');
