@@ -30,6 +30,8 @@ jobs:
   grouper:
     name: grouper tests with the TCMC files
     runs-on: ubuntu-latest
+    outputs:
+      data: ${{ steps.setup.outputs.data }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,8 +50,25 @@ jobs:
             cache/S0063.zip
           key: tcmc-${{ hashFiles('tools/setup.mjs') }}
       - run: npm ci
-      - run: npm run setup -- --strict
-      - run: npm test
+      # tcmc.or.th does not send the files to some networks, GitHub-hosted runners among them.
+      # setup exits with 3 then, and the steps that need the files are skipped with a warning.
+      # A self-hosted runner in Thailand (or a warm Actions cache) runs them in full.
+      - id: setup
+        run: |
+          set +e
+          node tools/setup.mjs --strict
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "data=yes" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 3 ]; then
+            echo "::warning title=TCMC files not available::tcmc.or.th did not send the files to this runner; grouper tests and the full docker build are skipped"
+            echo "data=no" >> "$GITHUB_OUTPUT"
+          else
+            exit "$code"
+          fi
+      - if: steps.setup.outputs.data == 'yes'
+        run: npm test
         env:
           REQUIRE_DATA: '1'
 
@@ -66,9 +85,14 @@ jobs:
             cache/S0062.zip
             cache/S0063.zip
           key: tcmc-${{ hashFiles('tools/setup.mjs') }}
+      # without the TCMC files only the stages that do not need them are built
+      - if: needs.grouper.outputs.data != 'yes'
+        run: docker build --target deps -t thai-drg-grouper:deps .
       # build only: the image holds TCMC data and is not pushed anywhere
-      - run: docker build -t thai-drg-grouper:ci .
+      - if: needs.grouper.outputs.data == 'yes'
+        run: docker build -t thai-drg-grouper:ci .
       - name: Start and check /health
+        if: needs.grouper.outputs.data == 'yes'
         run: |
           docker run -d --name drg -p 127.0.0.1:8089:8089 --read-only --cap-drop ALL thai-drg-grouper:ci
           for i in $(seq 1 30); do
@@ -79,5 +103,5 @@ jobs:
             -d '{"sex":1,"dob":"1980-05-10","admitDate":"2024-01-10T08:30","dischargeDate":"2024-01-13T10:00","dischargeType":1,"pdx":"K35.8","procedures":["47.09"]}' \
             | tee result.json
           grep -q '"drg":"06070"' result.json
-      - if: always()
+      - if: always() && needs.grouper.outputs.data == 'yes'
         run: docker logs drg || true

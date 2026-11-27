@@ -70,10 +70,12 @@ const SOURCES = [
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
 
-function fail(msg) {
+function fail(msg, code = 1) {
     console.error(`\nsetup failed: ${msg}`);
-    process.exit(1);
+    process.exit(code);
 }
+// exit code when tcmc.or.th answers with a web page instead of the file (CI skips on it)
+const EXIT_BLOCKED = 3;
 
 // ------------------------------------------------------------------ zip (stored + deflate only)
 function readZip(buf) {
@@ -129,6 +131,7 @@ async function getZip(src) {
     console.log(`  ${src.file}: downloading ${url} (${mb(src.size)}, ${src.what})`);
     let buf;
     let why = '';
+    let blocked = false;
     // a broken transfer gives other bytes, so try a few times before giving up
     for (let attempt = 1; attempt <= 3; attempt++) {
         let res;
@@ -139,6 +142,8 @@ async function getZip(src) {
             } else {
                 buf = Buffer.from(await res.arrayBuffer());
                 if (sha256(buf) === src.sha256) break;
+                // tcmc.or.th sends a small HTML page to some networks (cloud and overseas hosts)
+                blocked = (res.headers.get('content-type') ?? '').toLowerCase().includes('text/html');
                 why = `got ${buf.length} bytes (${res.headers.get('content-type')}) with checksum ${sha256(buf)}, expected ${src.size} bytes with ${src.sha256}`;
                 buf = null;
             }
@@ -146,6 +151,10 @@ async function getZip(src) {
             why = e.cause?.message ?? e.message;
         }
         console.log(`  ${src.file}: attempt ${attempt} failed: ${why}`);
+    }
+    if (!buf && blocked) {
+        fail(`tcmc.or.th answered with a web page instead of ${src.file} (${why}). The site does not send the files to some networks, `
+            + `such as cloud and overseas hosts. Download ${url} with a browser on a network in Thailand into ${CACHE} and run again.`, EXIT_BLOCKED);
     }
     if (!buf) {
         fail(`cannot get ${src.file} from ${url}: ${why}. If TCMC published a new file, this grouper is not checked with it. `
