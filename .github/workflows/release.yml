@@ -48,6 +48,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          target: runtime
           load: true
           tags: thai-drg-grouper:release-test
       # the zips are only in this repository's Actions cache (filled by CI); never in the image
@@ -88,6 +89,8 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          # the image without TCMC files; never the bundled target
+          target: runtime
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

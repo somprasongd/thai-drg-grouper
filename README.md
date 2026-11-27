@@ -74,7 +74,9 @@ docker compose logs -f      # ดูการสร้างกฎครั้�
 ### ด้วย docker run
 
 ```sh
-docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089   -v drg-data:/data --read-only --tmpfs /tmp --cap-drop ALL   ghcr.io/somprasongd/thai-drg-grouper:1
+docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089 \
+  -v drg-data:/data --read-only --tmpfs /tmp --cap-drop ALL \
+  ghcr.io/somprasongd/thai-drg-grouper:1
 ```
 
 เมื่อพร้อมแล้ว:
@@ -104,6 +106,34 @@ docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089   -v drg-data:/data
 
 > **volume `/data` มีตารางและกฎที่มาจากเอกสารของ สรท.** ใช้ภายในหน่วยงานของคุณเอง
 > อย่าเผยแพร่ volume นั้น หรือ image ที่ใส่ไฟล์เหล่านั้นไว้ ขึ้นที่สาธารณะ เว้นแต่ได้รับอนุญาตจาก สรท.
+
+### image ที่มีข้อมูลในตัว สำหรับใช้ภายในหน่วยงาน
+
+ถ้ามีหลายเครื่อง และไม่อยากให้ทุกเครื่องดาวน์โหลดและสร้างกฎเอง ให้ build image ที่ทำ setup ไว้แล้วครั้งเดียว
+แล้วเก็บใน registry ส่วนตัวของหน่วยงาน (เช่น Harbor, GitLab Container Registry หรือ registry ใน LAN)
+
+```sh
+# วาง S0021.zip, S0062.zip, S0063.zip ไว้ใน cache/ (หรือรัน npm run setup ไว้ก่อนแล้ว)
+docker build --target bundled --build-context tcmc=./cache \
+  -t registry.example.local/thai-drg-grouper:1.0.0-bundled .
+docker push registry.example.local/thai-drg-grouper:1.0.0-bundled    # registry ส่วนตัวเท่านั้น
+```
+
+- ขั้น build จะรัน setup แบบ `--strict` ถ้า `rules.json` ไม่ตรงกับชุดที่เทียบกับ exe แล้ว build จะหยุด
+- zip ถูกต่อเข้ามาเฉพาะตอนรัน setup ไม่ได้อยู่ใน layer ใดของ image ใน image มีแค่ตาราง dbf 4 ไฟล์และ `rules.json` ที่ `/app/groupers`
+- ถ้าไม่ใส่ `--build-context tcmc=./cache` ขั้น build จะดาวน์โหลด zip จาก สรท. เอง (เครื่องที่ build ต้องออกอินเทอร์เน็ตได้ และ สรท. ต้องยอมส่งไฟล์ให้)
+- เครื่องที่ใช้ไม่ต้องมี volume และไม่ต้องออกอินเทอร์เน็ต เริ่มบริการได้ทันที:
+
+  ```sh
+  docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089 \
+    --read-only --tmpfs /tmp --cap-drop ALL \
+    registry.example.local/thai-drg-grouper:1.0.0-bundled
+  ```
+
+  ถ้าใช้ compose ให้ตั้ง `DRG_IMAGE=registry.example.local/thai-drg-grouper:1.0.0-bundled` ใน `.env`
+
+> **ห้าม push image นี้ขึ้น registry สาธารณะ** (Docker Hub, ghcr.io แบบ public ฯลฯ) เพราะมีไฟล์ของ สรท. อยู่ข้างใน
+> ตั้ง registry ให้ต้อง login ก่อน pull และใช้เฉพาะภายในหน่วยงาน งาน Release ของ repo นี้ build เฉพาะ image ที่ไม่มีข้อมูล
 
 ---
 
@@ -598,12 +628,12 @@ CI (GitHub Actions) มี 3 งาน:
 
 1. ทดสอบบน Node 20, 22, 24 โดยไม่มีข้อมูล สรท.
 2. รัน `setup --strict` แล้วทดสอบครบทุกข้อ
-3. build Docker image, ตรวจว่าไม่มีไฟล์ของ สรท. ใน image, เริ่ม container ครั้งแรก (สร้างกฎจาก zip ใน cache) แล้วเรียก `/health` และจัดกลุ่ม 1 ราย จากนั้น restart เพื่อตรวจว่าใช้ไฟล์ใน volume เดิม (ไม่ push image)
+3. build Docker image, ตรวจว่าไม่มีไฟล์ของ สรท. ใน image, เริ่ม container ครั้งแรก (สร้างกฎจาก zip ใน cache) แล้วเรียก `/health` และจัดกลุ่ม 1 ราย จากนั้น restart เพื่อตรวจว่าใช้ไฟล์ใน volume เดิม แล้ว build target `bundled` และเริ่มแบบไม่มีเครือข่ายเพื่อตรวจว่าจัดกลุ่มได้ทันทีโดยไม่ต้อง setup (ไม่ push image ใดเลย)
 
 เมื่อ push tag `v*.*.*` งาน Release (`.github/workflows/release.yml`) จะ:
 
 1. ตรวจว่า tag ตรงกับ version ใน `package.json`
-2. build image และทดสอบเริ่มครั้งแรกแบบเดียวกับ CI (ถ้ามี zip ใน Actions cache)
+2. build image (target `runtime` เท่านั้น ไม่ใช่ `bundled`) และทดสอบเริ่มครั้งแรกแบบเดียวกับ CI (ถ้ามี zip ใน Actions cache)
 3. push image (linux/amd64, linux/arm64 พร้อม SBOM และ provenance) ไปที่ `ghcr.io/somprasongd/thai-drg-grouper`
 4. สร้าง GitHub release จากหัวข้อของรุ่นนั้นใน `CHANGELOG.md`
 

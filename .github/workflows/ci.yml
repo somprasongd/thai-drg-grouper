@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # the image holds the code only, so it builds without the TCMC files
-      - run: docker build -t thai-drg-grouper:ci .
+      - run: docker build --target runtime -t thai-drg-grouper:ci .
       - name: No TCMC files in the image
         run: |
           if docker run --rm --entrypoint sh thai-drg-grouper:ci -c 'find / -xdev \( -iname "c63*.dbf" -o -name rules.json -o -iname "S00[0-9][0-9].zip" -o -iname "TDrg*.pdf" -o -iname "TGrp*" \) 2>/dev/null | grep .'; then
@@ -120,5 +120,25 @@ jobs:
             sleep 1
           done
           test "$(docker logs drg 2>&1 | grep -c 'Running setup')" -eq 1
+      # the bundled target (private registries only) is built and started here, never pushed
+      - name: Bundled image starts with no network
+        if: needs.grouper.outputs.data == 'yes'
+        run: |
+          docker build --target bundled --build-context tcmc=./cache -t thai-drg-grouper:ci-bundled .
+          if docker run --rm --entrypoint sh thai-drg-grouper:ci-bundled -c 'find / -xdev \( -iname "S00[0-9][0-9].zip" -o -iname "TDrg*.pdf" -o -iname "TGrp*" \) 2>/dev/null | grep .'; then
+            echo "::error::TCMC zips or books found in the bundled image"
+            exit 1
+          fi
+          docker run -d --name drgb --network none --read-only --tmpfs /tmp --cap-drop ALL thai-drg-grouper:ci-bundled
+          for i in $(seq 1 30); do
+            if docker exec drgb node -e "fetch('http://127.0.0.1:8089/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"; then break; fi
+            sleep 1
+          done
+          docker exec drgb node -e "fetch('http://127.0.0.1:8089/api/v1/group',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sex:1,dob:'1980-05-10',admitDate:'2024-01-10T08:30',dischargeDate:'2024-01-13T10:00',dischargeType:1,pdx:'K35.8',procedures:['47.09']})}).then(r=>r.text()).then(console.log)" \
+            | tee bundled.json
+          grep -q '"drg":"06070"' bundled.json
+          test "$(docker logs drgb 2>&1 | grep -c 'Running setup')" -eq 0
       - if: always() && needs.grouper.outputs.data == 'yes'
-        run: docker logs drg 2>&1 | grep -v '"level":30' || true
+        run: |
+          docker logs drg 2>&1 | grep -v '"level":30' || true
+          docker logs drgb 2>&1 | grep -v '"level":30' || true

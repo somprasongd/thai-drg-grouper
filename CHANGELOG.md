@@ -2,6 +2,15 @@
 
 รูปแบบตาม [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) และใช้ [Semantic Versioning](https://semver.org/)
 
+## [Unreleased]
+
+### เพิ่ม
+
+- Dockerfile target `bundled`: image ที่ทำ setup ไว้แล้วตอน build ใช้ใน registry ส่วนตัวของหน่วยงาน
+  - `docker build --target bundled --build-context tcmc=./cache .`
+  - มีไฟล์ของ สรท. อยู่ข้างใน ห้าม push ขึ้นที่สาธารณะ งาน Release ไม่ build target นี้
+  - เริ่มได้ทันที ไม่ต้องมี volume และไม่ต้องออกอินเทอร์เน็ต
+
 ## [1.0.0] - 2026-11-27
 
 ### เพิ่ม
@@ -26,4 +35,5 @@
 - compose.yaml
 - CI และงาน Release บน GitHub Actions
 
+[Unreleased]: https://github.com/somprasongd/thai-drg-grouper/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/somprasongd/thai-drg-grouper/releases/tag/v1.0.0
