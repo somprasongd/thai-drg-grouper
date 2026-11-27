@@ -111,37 +111,54 @@ export function buildDbf(fields, records) {
  * @returns {{ fields: DbfField[], records: Array<Record<string, string|number|null>> }}
  */
 export function parseDbf(buf) {
-    const version = buf.readUInt8(0);
-    const count = buf.readUInt32LE(4);
-    const headerLength = buf.readUInt16LE(8);
-    const recordLength = buf.readUInt16LE(10);
-
-    const fields = [];
-    for (let off = HEADER_SIZE; off + FIELD_DESC_SIZE <= headerLength && buf[off] !== 0x0d; off += FIELD_DESC_SIZE) {
-        const rawName = buf.toString('ascii', off, off + 11);
-        fields.push({
-            name: rawName.replace(/\0.*$/s, '').trim(),
-            type: String.fromCharCode(buf[off + 11]),
-            length: buf[off + 16],
-            decimals: buf[off + 17],
-        });
-    }
-
+    const { version, count, headerLength, recordLength, fields } = readDbfHeader(buf);
     const records = [];
     for (let r = 0; r < count; r++) {
-        let off = headerLength + r * recordLength;
-        if (off + recordLength > buf.length) break;
-        const deleted = buf[off] === 0x2a; // '*'
-        off += 1;
+        const start = headerLength + r * recordLength;
+        if (buf[start] === 0x2a) continue; // '*' deleted
         const rec = {};
         for (const f of fields) {
-            const raw = buf.toString('latin1', off, off + f.length);
-            off += f.length;
-            rec[f.name.toUpperCase()] = parseValue(f, raw);
+            rec[f.name.toUpperCase()] = parseValue(f, buf.toString('latin1', start + f.offset, start + f.offset + f.length));
         }
-        if (!deleted) records.push(rec);
+        records.push(rec);
     }
-    return { version, fields, records };
+    return { version, fields: fields.map(({ name, type, length, decimals }) => ({ name, type, length, decimals })), records };
+}
+
+export class DbfFormatError extends Error {}
+
+/**
+ * Read the header of a dBase III / FoxPro .dbf buffer and check that it is sane.
+ * Each field gets its offset inside a record (the delete flag is byte 0).
+ * count is the number of whole records the buffer really holds.
+ */
+export function readDbfHeader(buf) {
+    if (!Buffer.isBuffer(buf) || buf.length < HEADER_SIZE + 1) throw new DbfFormatError('not a dbf file: too short');
+    const version = buf.readUInt8(0);
+    const declared = buf.readUInt32LE(4);
+    const headerLength = buf.readUInt16LE(8);
+    const recordLength = buf.readUInt16LE(10);
+    if (headerLength < HEADER_SIZE + 1 || headerLength > buf.length || recordLength < 1) {
+        throw new DbfFormatError('not a dbf file: bad header');
+    }
+    const fields = [];
+    let offset = 1;
+    let off = HEADER_SIZE;
+    for (; off + FIELD_DESC_SIZE <= headerLength && buf[off] !== 0x0d; off += FIELD_DESC_SIZE) {
+        const name = buf.toString('latin1', off, off + 11).replace(/\0.*$/s, '').trim();
+        const type = String.fromCharCode(buf[off + 11]);
+        const length = buf[off + 16];
+        if (!/^[A-Za-z_][A-Za-z0-9_]{0,10}$/.test(name) || !/^[A-Z0-9@+]$/.test(type)) {
+            throw new DbfFormatError(`not a dbf file: bad field descriptor ${fields.length + 1}`);
+        }
+        fields.push({ name, type, length, decimals: buf[off + 17], offset, descriptor: off });
+        offset += length;
+    }
+    if (buf[off] !== 0x0d || fields.length === 0) throw new DbfFormatError('not a dbf file: no field list');
+    if (offset !== recordLength) throw new DbfFormatError('not a dbf file: field lengths do not add up to the record length');
+    const fit = Math.floor((buf.length - headerLength) / recordLength);
+    if (fit < declared) throw new DbfFormatError(`the file is cut short: the header says ${declared} records, only ${fit} are there`);
+    return { version, count: declared, headerLength, recordLength, fields, terminator: off };
 }
 
 function parseValue(field, raw) {

@@ -111,6 +111,17 @@ jobs:
             -d '{"sex":1,"dob":"1980-05-10","admitDate":"2024-01-10T08:30","dischargeDate":"2024-01-13T10:00","dischargeType":1,"pdx":"K35.8","procedures":["47.09"]}' \
             | tee result.json
           grep -q '"drg":"06070"' result.json
+      - name: Web page and .dbf file endpoint
+        if: needs.grouper.outputs.data == 'yes'
+        run: |
+          curl -fsS http://127.0.0.1:8089/ | grep -q '<title>Thai DRG Grouper</title>'
+          curl -fsS -o /dev/null http://127.0.0.1:8089/ui/app.js
+          node -e "Promise.all([import('./src/dbf.js'), import('./src/layout.js')]).then(([{ buildDbf }, { DRG_FIELDS }]) => process.stdout.write(buildDbf(DRG_FIELDS, [{ DOB: '1980-05-10', SEX: '1', DATEADM: '2024-01-10', TIMEADM: '0830', DATEDSC: '2024-01-13', TIMEDSC: '1000', DISCHT: '1', PDX: 'K358', PROC1: '4709' }])))" > case.dbf
+          curl -fsS -X POST --data-binary @case.dbf -H 'Content-Type: application/octet-stream' \
+            -D headers.txt -o grouped.dbf http://127.0.0.1:8089/api/v1/group/file
+          grep -i '^x-grouper-summary:' headers.txt
+          grep -qi '^x-grouper-summary: .*"grouped":1' headers.txt
+          grep -q '06070' grouped.dbf
       - name: Second start uses the volume
         if: needs.grouper.outputs.data == 'yes'
         run: |

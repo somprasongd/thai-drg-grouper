@@ -33,6 +33,8 @@ export function loadConfig() {
         groupersDir: resolve(ROOT_DIR, str('GROUPERS_DIR', './groupers')),
         maxQueue: int('MAX_QUEUE', 200, 1),
         maxBatch: int('MAX_BATCH', 5000, 1),
+        maxFileRecords: int('MAX_FILE_RECORDS', 100000, 1),
+        webUi: str('WEB_UI', 'on') !== 'off',
         logLevel: str('LOG_LEVEL', 'info'),
     };
 }

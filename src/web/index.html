@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Thai DRG Grouper</title>
+<link rel="icon" href="/ui/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/app.css">
+<script src="/ui/app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <a class="brand" href="/">
+      <img src="/ui/icon.svg" alt="" width="32" height="32">
+      <span><strong>Thai DRG Grouper</strong><small id="brand-version">กำลังโหลด…</small></span>
+    </a>
+    <nav class="top-actions">
+      <label class="version-pick" id="version-pick" hidden>
+        <span class="sr-only">รุ่น grouper</span>
+        <select id="version"></select>
+      </label>
+      <button type="button" class="btn ghost" id="key-open" hidden>คีย์ API</button>
+      <a class="btn ghost" href="/docs" target="_blank" rel="noopener">API docs</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tabs" role="tablist" aria-label="วิธีใช้งาน">
+    <button type="button" role="tab" id="tab-form" aria-controls="panel-form" aria-selected="true">กรอกข้อมูลผู้ป่วย</button>
+    <button type="button" role="tab" id="tab-file" aria-controls="panel-file" aria-selected="false" tabindex="-1">อัปโหลดไฟล์ dbf</button>
+  </div>
+
+  <!-- ------------------------------------------------------------ form -->
+  <section id="panel-form" role="tabpanel" aria-labelledby="tab-form" class="layout">
+    <form id="case-form" class="card form" novalidate autocomplete="off">
+      <fieldset>
+        <legend>ผู้ป่วย</legend>
+        <div class="grid">
+          <div class="field">
+            <span class="label" id="sex-label">เพศ</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="sex-label">
+              <label><input type="radio" name="sex" value="1"><span>ชาย</span></label>
+              <label><input type="radio" name="sex" value="2"><span>หญิง</span></label>
+            </div>
+          </div>
+          <label class="field">
+            <span class="label">วันเกิด <em>ค.ศ.</em></span>
+            <input type="date" name="dob" min="1880-01-01" max="2200-12-31">
+          </label>
+          <label class="field">
+            <span class="label">น้ำหนักแรกรับ <em>กก.</em></span>
+            <input type="number" name="admitWeight" min="0" max="999.999" step="0.001" inputmode="decimal" placeholder="เช่น 3.2">
+            <small class="hint">ต้องใส่เมื่ออายุน้อยกว่า 28 วัน</small>
+          </label>
+          <p class="field age-out" id="age-out" aria-live="polite"></p>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>การรับไว้และจำหน่าย</legend>
+        <div class="grid wide">
+          <div class="field">
+            <span class="label" id="adm-label">วันเวลาที่รับไว้</span>
+            <div class="pair" role="group" aria-labelledby="adm-label">
+              <input type="date" name="admitDate" aria-label="วันที่รับไว้" min="1900-01-01" max="2200-12-31">
+              <input type="time" name="admitTime" aria-label="เวลาที่รับไว้">
+            </div>
+          </div>
+          <div class="field">
+            <span class="label" id="dsc-label">วันเวลาที่จำหน่าย</span>
+            <div class="pair" role="group" aria-labelledby="dsc-label">
+              <input type="date" name="dischargeDate" aria-label="วันที่จำหน่าย" min="1900-01-01" max="2200-12-31">
+              <input type="time" name="dischargeTime" aria-label="เวลาที่จำหน่าย">
+            </div>
+          </div>
+          <label class="field">
+            <span class="label">ประเภทการจำหน่าย</span>
+            <select name="dischargeType">
+              <option value="">— เลือก —</option>
+              <option value="1">1 แพทย์อนุญาต</option>
+              <option value="2">2 ไม่สมัครใจอยู่</option>
+              <option value="3">3 หนีกลับ</option>
+              <option value="4">4 ส่งต่อ</option>
+              <option value="5">5 อื่น ๆ</option>
+              <option value="8">8 เสียชีวิต (ชันสูตรศพ)</option>
+              <option value="9">9 เสียชีวิต (ไม่ชันสูตรศพ)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="label">วันลา <em>วัน</em></span>
+            <input type="number" name="leaveDays" min="0" max="999" step="1" inputmode="numeric" placeholder="0">
+          </label>
+          <p class="field los-out" id="los-out" aria-live="polite"></p>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>การวินิจฉัยและหัตถการ</legend>
+        <label class="field">
+          <span class="label">การวินิจฉัยหลัก (PDx) <em>ICD-10</em></span>
+          <input type="text" name="pdx" class="code" maxlength="8" placeholder="เช่น K35.8" spellcheck="false" autocapitalize="characters">
+        </label>
+        <div class="field">
+          <span class="label" id="sdx-label">การวินิจฉัยรอง (SDx) <em>ICD-10 ไม่เกิน 12 รหัส</em></span>
+          <div class="chips" data-name="sdx" data-max="12" data-pattern="^[A-Z0-9.]+$">
+            <input type="text" class="code" aria-labelledby="sdx-label" placeholder="พิมพ์รหัสแล้วกด Enter" spellcheck="false" autocapitalize="characters">
+          </div>
+        </div>
+        <div class="field">
+          <span class="label" id="proc-label">หัตถการ <em>ICD-9-CM ไม่เกิน 20 รหัส</em></span>
+          <div class="chips" data-name="procedures" data-max="20" data-pattern="^[A-Z0-9.+]+$">
+            <input type="text" class="code" aria-labelledby="proc-label" placeholder="พิมพ์รหัสแล้วกด Enter" spellcheck="false" autocapitalize="characters">
+          </div>
+          <small class="hint">วางหลายรหัสพร้อมกันได้ คั่นด้วยเว้นวรรค จุลภาค หรือขึ้นบรรทัดใหม่</small>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" class="btn primary" id="group-btn">จัดกลุ่ม</button>
+        <button type="button" class="btn" id="sample-btn">ใส่ตัวอย่าง</button>
+        <button type="reset" class="btn ghost" id="reset-btn">ล้างฟอร์ม</button>
+      </div>
+    </form>
+
+    <aside class="result-col">
+      <div class="card result" id="result" aria-live="polite">
+        <div class="empty">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M10 14h28M10 24h18M10 34h10" stroke="currentColor" stroke-width="4" stroke-linecap="round" fill="none"/><circle cx="34" cy="33" r="6" stroke="currentColor" stroke-width="3.5" fill="none"/></svg>
+          <p>กรอกข้อมูลแล้วกด <strong>จัดกลุ่ม</strong><br>ผลจะแสดงที่นี่</p>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <!-- ------------------------------------------------------------ file -->
+  <section id="panel-file" role="tabpanel" aria-labelledby="tab-file" hidden>
+    <div class="file-layout">
+      <div class="card">
+        <h2>จัดกลุ่มทั้งไฟล์</h2>
+        <p class="muted">ใช้ไฟล์ .dbf รูปแบบเดียวกับที่เคยส่งให้โปรแกรม TGrp6305 ได้ไฟล์เดิมกลับไป พร้อมผลในคอลัมน์ DRG, MDC, ERR, WARN, RW, ADJRW, WTLOS, OT และ ACTLOS คอลัมน์อื่นและข้อความภาษาไทยยังอยู่ครบ</p>
+        <label class="drop" id="drop">
+          <input type="file" id="file-input" accept=".dbf,.DBF">
+          <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V11m0 0-8 8m8-8 8 8M10 31v4a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-4" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          <span class="drop-main">ลากไฟล์ .dbf มาวาง หรือ <u>เลือกไฟล์</u></span>
+          <span class="drop-sub" id="file-limit">ไฟล์เดียว ไม่เกิน 50 MB</span>
+        </label>
+        <div class="file-picked" id="file-picked" hidden>
+          <div>
+            <strong id="file-name"></strong>
+            <small id="file-meta"></small>
+          </div>
+          <button type="button" class="btn ghost small" id="file-clear">เปลี่ยนไฟล์</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn primary" id="file-btn" disabled>จัดกลุ่มไฟล์</button>
+        </div>
+        <p class="privacy">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 10 4-1.7 7-5.6 7-10V6l-7-3Z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/></svg>
+          เซิร์ฟเวอร์ประมวลผลไฟล์ในหน่วยความจำเท่านั้น ไม่บันทึกลงดิสก์และไม่เขียนลง log
+        </p>
+      </div>
+      <div class="card file-result" id="file-result" aria-live="polite" hidden></div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p>ตรรกะเขียนจากหนังสือ Thai DRG Version 6.3.3 ของ สรท. และใช้ตารางรุ่น 6.3.4 โปรแกรมนี้ไม่ได้จัดทำหรือรับรองโดย สรท. ควรตรวจผลกับโปรแกรมทางการก่อนใช้เบิกจ่าย</p>
+  <p><a href="https://github.com/somprasongd/thai-drg-grouper" target="_blank" rel="noopener">GitHub</a> · <a href="/docs" target="_blank" rel="noopener">API docs</a> · <span id="foot-version"></span></p>
+</footer>
+
+<dialog id="key-dialog">
+  <form method="dialog" id="key-form">
+    <h2>คีย์ API</h2>
+    <p class="muted">เซิร์ฟเวอร์นี้ตั้ง API_KEY ไว้ ใส่คีย์เพื่อใช้งาน คีย์จะเก็บไว้ในแท็บนี้เท่านั้น ปิดแท็บแล้วหายไป</p>
+    <label class="field">
+      <span class="label">X-API-Key</span>
+      <input type="password" id="key-input" autocomplete="off" required>
+    </label>
+    <p class="form-error" id="key-error" hidden></p>
+    <div class="actions">
+      <button type="submit" class="btn primary" value="save">บันทึก</button>
+      <button type="submit" class="btn ghost" value="cancel" formnovalidate>ยกเลิก</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>

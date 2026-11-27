@@ -27,7 +27,7 @@
   "scripts": {
     "setup": "node tools/setup.mjs",
     "start": "node src/server.js",
-    "test": "node --test --test-concurrency=1 test/unit.test.js test/native.test.js",
+    "test": "node --test --test-concurrency=1 test/unit.test.js test/file.test.js test/native.test.js",
     "compare": "node tools/compare.mjs"
   },
   "dependencies": {

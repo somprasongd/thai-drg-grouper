@@ -3,11 +3,12 @@
 [![CI](https://github.com/somprasongd/thai-drg-grouper/actions/workflows/ci.yml/badge.svg)](https://github.com/somprasongd/thai-drg-grouper/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-โปรแกรมจัดกลุ่มผู้ป่วยใน **Thai DRG 6.3.4** เขียนใหม่ทั้งหมดด้วย JavaScript และให้บริการเป็น REST API (HTTP/JSON)
+โปรแกรมจัดกลุ่มผู้ป่วยใน **Thai DRG 6.3.4** เขียนใหม่ทั้งหมดด้วย JavaScript ให้บริการเป็น REST API (HTTP/JSON) และมีหน้าเว็บให้ใช้งานด้วย
 
 - ไม่ต้องใช้ Windows
 - ไม่ต้องเขียนไฟล์ dbf
 - ไม่ต้องรัน `TGrp6305.exe`
+- ไฟล์ .dbf แบบที่เคยส่งให้ exe ยังใช้ได้: อัปโหลดผ่านหน้าเว็บหรือ API แล้วได้ไฟล์เดิมพร้อมผลกลับไป
 
 | | |
 |---|---|
@@ -28,7 +29,7 @@
 2. [เริ่มใช้งานด้วย Node.js](#2-เริ่มใช้งานด้วย-nodejs)
 3. [npm run setup ทำอะไร](#3-npm-run-setup-ทำอะไร)
 4. [การตั้งค่า](#4-การตั้งค่า)
-5. [API](#5-api)
+5. [API](#5-api) และ[หน้าเว็บ](#58-หน้าเว็บ)
 6. [รหัส Error และ Warning](#6-รหัส-error-และ-warning)
 7. [วิธีสร้างจากหนังสือ Thai DRG 6.3.3](#7-วิธีสร้างจากหนังสือ-thai-drg-633)
 8. [ผลการทดสอบเทียบกับ TGrp6305.exe](#8-ผลการทดสอบเทียบกับ-tgrp6305exe)
@@ -81,6 +82,7 @@ docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089 \
 
 เมื่อพร้อมแล้ว:
 
+- หน้าเว็บสำหรับกรอกข้อมูลหรืออัปโหลดไฟล์ .dbf: <http://127.0.0.1:8089/>
 - หน้าเอกสาร (Swagger UI): <http://127.0.0.1:8089/docs>
 - ตรวจสถานะ: `curl http://127.0.0.1:8089/health`
 
@@ -147,7 +149,7 @@ docker push registry.example.local/thai-drg-grouper:1.0.0-bundled    # registry 
 ```sh
 npm ci
 npm run setup      # ดาวน์โหลดไฟล์ สรท. และสร้างกฎ ทำครั้งเดียว
-npm start          # http://127.0.0.1:8089/docs
+npm start          # หน้าเว็บ http://127.0.0.1:8089/  เอกสาร API /docs
 ```
 
 ถ้า `pdftotext` ไม่อยู่ใน PATH ให้ระบุตำแหน่งเอง:
@@ -199,11 +201,13 @@ npm run setup -- --pdftotext=/path/to/pdftotext
 |---|---|---|
 | `HOST` | `127.0.0.1` (ใน Docker `0.0.0.0`) | ที่อยู่ที่รอรับคำขอ |
 | `PORT` | `8089` | พอร์ต |
-| `API_KEY` | (ว่าง) | ถ้ากำหนด ทุกคำขอ `/api/*` ต้องมี header `X-API-Key` (`/health` และ `/docs` ไม่ต้อง) |
+| `API_KEY` | (ว่าง) | ถ้ากำหนด ทุกคำขอ `/api/*` ต้องมี header `X-API-Key` (`/health`, `/docs` และไฟล์ของหน้าเว็บไม่ต้อง หน้าเว็บจะถามคีย์เอง) |
 | `DEFAULT_VERSION` | `6.3.4` | รุ่นที่ใช้เมื่อคำขอไม่ระบุ |
 | `GROUPERS_DIR` | `./groupers` | โฟลเดอร์ที่มีโฟลเดอร์ย่อยรุ่นละหนึ่งโฟลเดอร์ |
 | `MAX_QUEUE` | `200` | คำขอที่รอพร้อมกันได้สูงสุด เกินนี้ได้ HTTP 503 |
 | `MAX_BATCH` | `5000` | จำนวนรายสูงสุดต่อคำขอ batch |
+| `MAX_FILE_RECORDS` | `100000` | จำนวนรายการสูงสุดในไฟล์ .dbf ที่ส่งให้ `/api/v1/group/file` (ไฟล์ใหญ่ได้ไม่เกิน 50 MB) |
+| `WEB_UI` | `on` | ตั้ง `off` เพื่อปิดหน้าเว็บที่ `/` (API ยังใช้ได้ตามเดิม) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug` |
 | `DRG_BIND`, `DRG_PORT` | `127.0.0.1`, `8089` | (เฉพาะ compose) ที่อยู่และพอร์ตที่เปิดบนเครื่อง host |
 
@@ -215,11 +219,13 @@ npm run setup -- --pdftotext=/path/to/pdftotext
 |---|---|---|
 | `POST` | `/api/v1/group` | จัดกลุ่ม 1 ราย |
 | `POST` | `/api/v1/group/batch` | จัดกลุ่มหลายราย (ไม่เกิน `MAX_BATCH`) ผลเรียงตามลำดับที่ส่ง |
+| `POST` | `/api/v1/group/file` | จัดกลุ่มทั้งไฟล์ .dbf แล้วส่งไฟล์เดิมพร้อมผลกลับ (ดู [5.7](#57-จัดกลุ่มทั้งไฟล์-dbf)) |
 | `GET` | `/api/v1/drg/{code}` | ข้อมูล DRG: ชื่อ, MDC, RW, RW0d, WtLOS, OT |
 | `GET` | `/api/v1/versions` | รุ่นที่ให้บริการ |
 | `GET` | `/api/v1/codes` | ความหมายของรหัส error, warning และประเภทการจำหน่าย |
 | `GET` | `/health` | สถานะ (ไม่ต้องใช้ API key) |
 | `GET` | `/docs` | Swagger UI และ OpenAPI (`/docs/json`) |
+| `GET` | `/` | หน้าเว็บ (ดู [5.8](#58-หน้าเว็บ)) |
 
 ระบุรุ่นด้วย query string เช่น `?version=6.3.4` ส่วน batch ใส่ `version` ใน body ได้ด้วย
 
@@ -342,14 +348,56 @@ API ปรับข้อมูลให้ และบอกทุกอย่
 | สถานะ | เมื่อไร |
 |---|---|
 | 200 | สำเร็จ ถึง grouper จะให้ error code (เช่น ERR 2) ก็ยังเป็น 200 ให้ดูที่ `errorCode` |
-| 400 | body ผิดรูปแบบ, ข้อมูลผิด (มี `problems` บอกทุกข้อ) หรือไม่มีรุ่นที่ขอ |
+| 400 | body ผิดรูปแบบ, ข้อมูลผิด (มี `problems` บอกทุกข้อ), ไฟล์ .dbf ใช้ไม่ได้ หรือไม่มีรุ่นที่ขอ |
 | 401 | ไม่มีหรือส่ง `X-API-Key` ผิด (เมื่อตั้ง `API_KEY`) |
 | 404 | ไม่มี DRG ที่ขอ |
+| 413 | ไฟล์ใหญ่เกิน 50 MB |
+| 415 | `/api/v1/group/file` ไม่ได้ส่งเป็น `application/octet-stream` |
 | 503 | คิวเต็ม (เกิน `MAX_QUEUE`) ให้ลองใหม่ตาม header `Retry-After` |
 | 502 | grouper ทำงานผิดพลาด (ดู log) |
 | 500 | ข้อผิดพลาดอื่นที่ไม่คาดคิด (ดู log) |
 
-### 5.7 ตัวอย่างการเรียก
+### 5.7 จัดกลุ่มทั้งไฟล์ .dbf
+
+ส่งไฟล์ .dbf รูปแบบเดียวกับที่เคยส่งให้ `TGrp6305.exe` เป็น body (`Content-Type: application/octet-stream`) แล้วได้ไฟล์เดิมกลับมา โดยใส่ผลไว้ในคอลัมน์ `DRG`, `MDC`, `ERR`, `WARN`, `RW`, `ADJRW`, `WTLOS`, `OT` และ `ACTLOS`
+
+```sh
+curl -fsS -X POST --data-binary @ipd.dbf -H "Content-Type: application/octet-stream" \
+  -D headers.txt -o ipd_drg.dbf "http://127.0.0.1:8089/api/v1/group/file?version=6.3.4"
+```
+
+- อ่านคอลัมน์ขาเข้าแบบเดียวกับ exe: `DOB`, `SEX`, `DATEADM`, `TIMEADM`, `DATEDSC`, `TIMEDSC`, `DISCHT`, `ADMWT`, `PDX`, `SDX1`–`SDX12`, `PROC1`–`PROC20`, `LEAVEDAY` (ต้องมี `PDX` อย่างน้อย)
+- ไบต์อื่นของไฟล์ไม่เปลี่ยน รวมคอลัมน์อื่นและข้อความภาษาไทย (TIS-620)
+  - ทดสอบกับไฟล์ที่ exe จัดกลุ่มแล้ว 5 ไฟล์ (รวม 3,006 ราย) ได้ไฟล์ตรงกันทุกไบต์
+- รายการที่ถูกลบ (`*`) ไม่ถูกแตะ และไม่นับในผลรวม
+- ถ้าไฟล์ไม่มีคอลัมน์ผล จะเพิ่มคอลัมน์ไว้ท้ายแต่ละรายการ ขนาดตามไฟล์ของ exe
+- ถ้าค่าใดยาวเกินความกว้างของคอลัมน์ในไฟล์ จะใส่ `*` เต็มช่องแบบเดียวกับ dBase และนับไว้ใน `overflow`
+- ไฟล์ใหญ่ได้ไม่เกิน 50 MB และไม่เกิน `MAX_FILE_RECORDS` รายการ
+- header `X-Grouper-Summary` เป็น JSON สรุปผล:
+
+```json
+{"version":"6.3.4","records":3,"grouped":3,"deleted":0,"withError":1,"withWarning":0,
+ "errors":{"3":1},"overflow":0,"sumAdjRw":1.7788,"cmi":0.5929,"addedFields":[]}
+```
+
+ไฟล์ทำงานในหน่วยความจำเท่านั้น ไม่เขียนลงดิสก์ และไม่มีข้อมูลผู้ป่วยหรือชื่อไฟล์ใน log (ไฟล์ที่ส่งกลับชื่อ `grouped.dbf` เสมอ)
+
+### 5.8 หน้าเว็บ
+
+เปิด <http://127.0.0.1:8089/> มี 2 แท็บ:
+
+| แท็บ | ใช้ทำอะไร |
+|---|---|
+| กรอกข้อมูลผู้ป่วย | กรอกเพศ วันเกิด วันเวลารับไว้และจำหน่าย PDx, SDx และหัตถการ แล้วเห็นผล DRG, RW, AdjRW, WtLOS, OT, error และ warning เป็นภาษาไทย คัดลอกผลเป็น JSON ได้ |
+| อัปโหลดไฟล์ dbf | ลากไฟล์ .dbf มาวาง ได้สรุปผล (จำนวน error แยกตามรหัส, รวม AdjRW, CMI) และปุ่มดาวน์โหลดไฟล์ผล |
+
+- ใช้ได้ทั้งบนจอคอมพิวเตอร์และมือถือ และเปลี่ยนเป็นโหมดมืดตามเครื่อง
+- ไม่โหลดอะไรจากภายนอก (ไม่มี CDN, font หรือ tracker) ใช้ในเครือข่ายที่ปิดอินเทอร์เน็ตได้
+- ถ้าตั้ง `API_KEY` หน้าเว็บจะถามคีย์ และเก็บไว้ในแท็บนั้นเท่านั้น (sessionStorage)
+- มี Content-Security-Policy แบบเข้ม และห้ามฝังในเว็บอื่น (`frame-ancestors 'none'`)
+- ปิดได้ด้วย `WEB_UI=off`
+
+### 5.9 ตัวอย่างการเรียก
 
 **Java 8** (ไม่ต้องเพิ่ม library):
 
@@ -618,11 +666,12 @@ npm test
 | ไฟล์ | ทดสอบอะไร |
 |---|---|
 | `test/unit.test.js` | อ่าน/เขียน dbf, แปลงข้อมูลขาเข้า, อายุ, รหัส error/warning (ไม่ต้องใช้ข้อมูล สรท.) |
-| `test/native.test.js` | API ทั้งชุด: ไส้ติ่ง, ทารก, ERR 2, extension code, reassign, ERR 7, batch 300 ราย, ข้อมูล DRG, API key, รุ่นที่ไม่มี, ข้อความเมื่อยังไม่ได้ setup |
+| `test/file.test.js` | จัดกลุ่มทั้งไฟล์ .dbf (ไบต์อื่นไม่เปลี่ยน, ภาษาไทย, รายการที่ถูกลบ, เพิ่มคอลัมน์ผล, ค่าล้นคอลัมน์, ไฟล์เสีย), หน้าเว็บและ CSP, `WEB_UI=off`, API key (ใช้ grouper จำลอง ไม่ต้องใช้ข้อมูล สรท.) |
+| `test/native.test.js` | API ทั้งชุด: ไส้ติ่ง, ทารก, ERR 2, extension code, reassign, ERR 7, batch 300 ราย, ไฟล์ .dbf, ข้อมูล DRG, API key, รุ่นที่ไม่มี, ข้อความเมื่อยังไม่ได้ setup |
 
 - ถ้ายังไม่ได้รัน `npm run setup` ชุด `native.test.js` จะถูกข้าม
 - ตั้ง `REQUIRE_DATA=1` เพื่อให้ล้มเหลวแทนการข้าม (CI ใช้แบบนี้)
-- ผลล่าสุด: ผ่าน 20/20
+- ผลล่าสุด: ผ่าน 29/29
 
 CI (GitHub Actions) มี 3 งาน:
 
@@ -663,6 +712,8 @@ thai-drg-grouper/
 │  │  └─ conditions.js   แปลงนิยาม DC ในหนังสือเป็นฟังก์ชัน
 │  ├─ input.js           แปลง JSON เป็น record
 │  ├─ dbf.js, layout.js  อ่าน/เขียน dbf
+│  ├─ dbffile.js         จัดกลุ่มทั้งไฟล์ .dbf (POST /api/v1/group/file)
+│  ├─ web/               หน้าเว็บ (HTML, CSS, JS ไม่ต้อง build)
 │  └─ codes.js           รหัส error/warning
 ├─ groupers/6.3.4/
 │  ├─ grouper.json       ชื่อรุ่นและรายการตาราง (ใน git)

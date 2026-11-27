@@ -9,6 +9,8 @@ import { join } from 'node:path';
 import { loadConfig } from '../src/config.js';
 import { loadGroupers } from '../src/groupers.js';
 import { buildApp } from '../src/app.js';
+import { buildDbf, parseDbf } from '../src/dbf.js';
+import { DRG_FIELDS } from '../src/layout.js';
 
 const appendectomy = {
     ref: 'AN-001',
@@ -130,6 +132,27 @@ describe('API with the grouper', { skip }, () => {
         assert.equal(r.wtlos, 3.05);
         assert.equal(r.ot, 9);
         assert.equal((await app.inject('/api/v1/drg/99999')).statusCode, 404);
+    });
+
+    test('a .dbf file comes back grouped', async () => {
+        const rec = {
+            DOB: '1980-05-10', SEX: '1', DATEADM: '2024-01-10', TIMEADM: '0830', DATEDSC: '2024-01-13', TIMEDSC: '1000',
+            DISCHT: '1', PDX: 'K358', PROC1: '4709',
+        };
+        const payload = buildDbf(DRG_FIELDS, [rec, { ...rec, PDX: 'Z000' }]);
+        const res = await app.inject({ method: 'POST', url: '/api/v1/group/file', payload, headers: { 'content-type': 'application/octet-stream' } });
+        assert.equal(res.statusCode, 200);
+        const [a, b] = parseDbf(res.rawPayload).records;
+        assert.equal(a.DRG, '06070');
+        assert.equal(a.RW, 1.2127);
+        assert.equal(a.WTLOS, 3.05);
+        assert.equal(a.OT, 9);
+        assert.equal(a.ACTLOS, 3);
+        assert.equal(a.ERR, 0);
+        assert.equal(b.ERR, 3, 'Z00.0 is not acceptable as PDx');
+        const summary = JSON.parse(res.headers['x-grouper-summary']);
+        assert.equal(summary.grouped, 2);
+        assert.equal(summary.withError, 1);
     });
 
     test('API key', async () => {

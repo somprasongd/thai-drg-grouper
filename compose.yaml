@@ -20,6 +20,8 @@ services:
       DEFAULT_VERSION: ${DEFAULT_VERSION:-6.3.4}
       MAX_QUEUE: ${MAX_QUEUE:-200}
       MAX_BATCH: ${MAX_BATCH:-5000}
+      MAX_FILE_RECORDS: ${MAX_FILE_RECORDS:-100000}
+      WEB_UI: ${WEB_UI:-on}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # TCMC tables, rules.json and the zips; keep it inside your organisation

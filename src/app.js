@@ -6,8 +6,24 @@ import { readFileSync } from 'node:fs';
 import { BusyError, GrouperError } from './groupers.js';
 import { InputError, toGrouperRecord } from './input.js';
 import { DISCHARGE_TYPES, ERROR_CODES, WARNING_CODES, describeError, describeWarnings } from './codes.js';
+import { DbfFormatError, groupDbf } from './dbffile.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+// The web UI: a few static files, read once. Only these names are served.
+const WEB_FILES = {
+    '/': ['index.html', 'text/html; charset=utf-8'],
+    '/ui/app.css': ['app.css', 'text/css; charset=utf-8'],
+    '/ui/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+    '/ui/icon.svg': ['icon.svg', 'image/svg+xml'],
+};
+const WEB_HEADERS = {
+    'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+    'x-frame-options': 'DENY',
+};
+const DBF_TYPES = ['application/octet-stream', 'application/x-dbase', 'application/x-dbf', 'application/dbf', 'application/vnd.dbf'];
 
 // ---------- JSON schemas (also used for the OpenAPI page at /docs) ----------
 
@@ -179,6 +195,9 @@ export async function buildApp(config, runner, fastifyOptions = {}) {
         if (err.validation) {
             return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: err.message });
         }
+        if (err instanceof DbfFormatError) {
+            return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: err.message });
+        }
         if (err instanceof InputError) {
             return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'invalid case', problems: err.problems });
         }
@@ -325,6 +344,45 @@ export async function buildApp(config, runner, fastifyOptions = {}) {
             results,
         };
     });
+
+    // The raw .dbf is the body: no multipart, so nothing is written to a temp file.
+    await app.register(async (scope) => {
+        scope.addContentTypeParser(DBF_TYPES, { parseAs: 'buffer' }, (req, body, done) => done(null, body));
+        scope.post('/api/v1/group/file', {
+            schema: {
+                tags: ['grouper'],
+                summary: 'Group a .dbf data file and get it back with the results',
+                description: [
+                    'Send the .dbf file that TGrp6305.exe used to read (the grouper layout: DOB, SEX, DATEADM, TIMEADM, DATEDSC, TIMEDSC, DISCHT, ADMWT, AGE, AGEDAY, PDX, SDX1-12, PROC1-20, LEAVEDAY) as the raw body, Content-Type application/octet-stream.',
+                    'The answer is the same file with DRG, MDC, ERR, WARN, RW, ADJRW, WTLOS, OT and ACTLOS filled in. Every other byte stays as it was (other columns, Thai text, deleted records). Result fields the file does not have are added at the end of each record.',
+                    `The fields are read as the exe reads them, without clean-up. At most ${config.maxFileRecords} records. A summary is in the X-Grouper-Summary header (JSON). The file is handled in memory only; it is not stored or logged.`,
+                ].join('\n\n'),
+                consumes: DBF_TYPES,
+                querystring: { type: 'object', properties: { version: versionParam } },
+                produces: ['application/octet-stream'],
+            },
+        }, async (req, reply) => {
+            const pool = poolFor(req.query.version);
+            if (!Buffer.isBuffer(req.body)) {
+                return reply.code(415).send({ statusCode: 415, error: 'Unsupported Media Type', message: 'send the .dbf file as the body with Content-Type application/octet-stream' });
+            }
+            const { file, summary } = await groupDbf(req.body, (records) => runner.group(pool.version, records), { maxRecords: config.maxFileRecords });
+            return reply
+                .header('content-type', 'application/octet-stream')
+                .header('content-disposition', 'attachment; filename="grouped.dbf"')
+                .header('cache-control', 'no-store')
+                .header('x-grouper-summary', JSON.stringify({ version: pool.version, ...summary }))
+                .send(file);
+        });
+    });
+
+    if (config.webUi !== false) {
+        const dir = new URL('./web/', import.meta.url);
+        for (const [path, [name, type]] of Object.entries(WEB_FILES)) {
+            const body = readFileSync(new URL(name, dir));
+            app.get(path, { schema: { hide: true } }, async (req, reply) => reply.headers(WEB_HEADERS).type(type).header('cache-control', 'no-cache').send(body));
+        }
+    }
 
     return app;
 }
