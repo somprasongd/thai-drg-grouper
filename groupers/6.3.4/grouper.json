@@ -1,0 +1,5 @@
+{
+  "name": "Thai DRG 6.3.4",
+  "drgTable": "c63drg.dbf",
+  "tables": ["c63i10.dbf", "c63proc.dbf", "c63drg.dbf", "c63ccex.dbf"]
+}

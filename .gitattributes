@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.dbf binary
+*.DBF binary
+*.zip binary
+*.pdf binary

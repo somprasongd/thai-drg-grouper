@@ -1,0 +1,34 @@
+thai-drg-grouper
+Copyright 2026 Somprasong Damyos
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+-------------------------------------------------------------------------------
+Thai DRG and TCMC material
+-------------------------------------------------------------------------------
+
+The Thai DRG classification, its books and its grouper tables are the work of the
+Thai Casemix Centre (TCMC, สำนักพัฒนากลุ่มโรคร่วมไทย), https://www.tcmc.or.th
+
+This repository does NOT contain any TCMC file. "npm run setup" downloads them from
+the TCMC web site on your own machine:
+
+  S0021.zip  grouper TGrp6305 (Thai DRG 6.3.4); only the tables c63i10.dbf,
+             c63proc.dbf, c63drg.dbf and c63ccex.dbf are taken from it
+  S0062.zip  Thai DRG Version 6.3.3, Volume 1 and Volume 2
+  S0063.zip  Thai DRG Version 6.3.3, Appendix F
+
+The grouping logic in src/native/ and the parser in tools/build-rules.mjs were written
+from the published books. The order of the disease clusters in
+groupers/6.3.4/native/flow.json was read from the MDC diagrams in Volume 2.
+
+TGrp6305.exe was not decompiled, disassembled or otherwise reverse engineered. It was
+used only as a black box (cases in, results out) to compare results
+(tools/compare.mjs). It is not part of this repository.
+
+The Apache License covers the code of this repository only. It gives no right to the
+TCMC material: follow TCMC's own terms for the tables and books, and for any image or
+file that contains them (for example a Docker image built from this repository).
+
+This project is not made, checked or endorsed by TCMC. Check its results against the
+official TCMC grouper before using them for reimbursement.

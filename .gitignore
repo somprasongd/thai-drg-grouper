@@ -1,0 +1,21 @@
+node_modules/
+.env
+logs/
+coverage/
+
+# TCMC files: made by "npm run setup", never committed (see NOTICE)
+cache/*
+!cache/.gitkeep
+groupers/*/*.dbf
+groupers/*/*.DBF
+groupers/*/native/rules.json
+*.exe
+*.dll
+*.DLL
+*.cdx
+*.CDX
+*.zip
+*.pdf
+
+# output of tools/compare.mjs
+diff*.json

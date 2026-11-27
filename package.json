@@ -1,0 +1,38 @@
+{
+  "name": "thai-drg-grouper",
+  "version": "1.0.0",
+  "description": "Thai DRG 6.3.4 grouper in JavaScript, written from the TCMC Thai DRG 6.3.3 books, with a REST API",
+  "keywords": [
+    "thai-drg",
+    "drg",
+    "grouper",
+    "tcmc",
+    "casemix",
+    "icd-10",
+    "icd-9-cm",
+    "hospital",
+    "rest-api"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/somprasongd/thai-drg-grouper.git"
+  },
+  "type": "module",
+  "main": "src/server.js",
+  "private": true,
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "setup": "node tools/setup.mjs",
+    "start": "node src/server.js",
+    "test": "node --test --test-concurrency=1 test/unit.test.js test/native.test.js",
+    "compare": "node tools/compare.mjs"
+  },
+  "dependencies": {
+    "@fastify/swagger": "^9.9.5",
+    "@fastify/swagger-ui": "^6.1.5",
+    "fastify": "^5.12.8"
+  }
+}

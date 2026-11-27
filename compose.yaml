@@ -1,0 +1,29 @@
+# docker compose up -d --build
+# docs: http://127.0.0.1:8089/docs
+#
+# Settings come from .env next to this file (see .env.example).
+services:
+  drg-api:
+    build:
+      context: .
+    image: thai-drg-grouper:local
+    container_name: thai-drg-grouper
+    restart: unless-stopped
+    ports:
+      # only this machine by default; set DRG_BIND=0.0.0.0 to open it to the network (and set API_KEY)
+      - "${DRG_BIND:-127.0.0.1}:${DRG_PORT:-8089}:8089"
+    environment:
+      API_KEY: ${API_KEY:-}
+      DEFAULT_VERSION: ${DEFAULT_VERSION:-6.3.4}
+      MAX_QUEUE: ${MAX_QUEUE:-200}
+      MAX_BATCH: ${MAX_BATCH:-5000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
