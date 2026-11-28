@@ -16,7 +16,7 @@
 #
 # Image with the TCMC data inside, for a private registry of your own organisation only:
 #
-#   docker build --target bundled --build-context tcmc=./cache -t <your-registry>/thai-drg-grouper:1.0.0-bundled .
+#   docker build --target bundled --build-context tcmc=./cache -t <your-registry>/thai-drg-grouper:1.1.0-bundled .
 #
 # It runs setup while it builds (from the zips in ./cache, or it downloads them when
 # --build-context is left out), so it starts at once, needs no volume and no network.

@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-28
+
 ### เพิ่ม
 
 - หน้าเว็บที่ `/` (ปิดได้ด้วย `WEB_UI=off`)
@@ -54,5 +56,6 @@
 - compose.yaml
 - CI และงาน Release บน GitHub Actions
 
-[Unreleased]: https://github.com/somprasongd/thai-drg-grouper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/somprasongd/thai-drg-grouper/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/somprasongd/thai-drg-grouper/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/somprasongd/thai-drg-grouper/releases/tag/v1.0.0

@@ -49,8 +49,8 @@ image สำเร็จรูปอยู่ที่ GitHub Packages: `ghcr.io
 
 | tag | ความหมาย |
 |---|---|
-| `1.0.0` | รุ่นนั้นพอดี |
-| `1.0`, `1` | รุ่นล่าสุดในชุดนั้น |
+| `1.1.0` | รุ่นนั้นพอดี |
+| `1.1`, `1` | รุ่นล่าสุดในชุดนั้น |
 | `latest` | release ล่าสุด |
 
 **image มีแต่โค้ด ไม่มีไฟล์ของ สรท.** เมื่อเริ่มครั้งแรก container จะรัน `npm run setup` ให้เอง:
@@ -117,8 +117,8 @@ docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089 \
 ```sh
 # วาง S0021.zip, S0062.zip, S0063.zip ไว้ใน cache/ (หรือรัน npm run setup ไว้ก่อนแล้ว)
 docker build --target bundled --build-context tcmc=./cache \
-  -t registry.example.local/thai-drg-grouper:1.0.0-bundled .
-docker push registry.example.local/thai-drg-grouper:1.0.0-bundled    # registry ส่วนตัวเท่านั้น
+  -t registry.example.local/thai-drg-grouper:1.1.0-bundled .
+docker push registry.example.local/thai-drg-grouper:1.1.0-bundled    # registry ส่วนตัวเท่านั้น
 ```
 
 - ขั้น build จะรัน setup แบบ `--strict` ถ้า `rules.json` ไม่ตรงกับชุดที่เทียบกับ exe แล้ว build จะหยุด
@@ -129,10 +129,10 @@ docker push registry.example.local/thai-drg-grouper:1.0.0-bundled    # registry 
   ```sh
   docker run -d --name thai-drg-grouper -p 127.0.0.1:8089:8089 \
     --read-only --tmpfs /tmp --cap-drop ALL \
-    registry.example.local/thai-drg-grouper:1.0.0-bundled
+    registry.example.local/thai-drg-grouper:1.1.0-bundled
   ```
 
-  ถ้าใช้ compose ให้ตั้ง `DRG_IMAGE=registry.example.local/thai-drg-grouper:1.0.0-bundled` ใน `.env`
+  ถ้าใช้ compose ให้ตั้ง `DRG_IMAGE=registry.example.local/thai-drg-grouper:1.1.0-bundled` ใน `.env`
 
 > **ห้าม push image นี้ขึ้น registry สาธารณะ** (Docker Hub, ghcr.io แบบ public ฯลฯ) เพราะมีไฟล์ของ สรท. อยู่ข้างใน
 > ตั้ง registry ให้ต้อง login ก่อน pull และใช้เฉพาะภายในหน่วยงาน งาน Release ของ repo นี้ build เฉพาะ image ที่ไม่มีข้อมูล
