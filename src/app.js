@@ -5,8 +5,11 @@ import swaggerUi from '@fastify/swagger-ui';
 import { readFileSync } from 'node:fs';
 import { BusyError, GrouperError } from './groupers.js';
 import { InputError, toGrouperRecord } from './input.js';
-import { DISCHARGE_TYPES, ERROR_CODES, WARNING_CODES, describeError, describeWarnings } from './codes.js';
-import { DbfFormatError, groupDbf } from './dbffile.js';
+import { DISCHARGE_TYPES, ERROR_CODES, WARNING_CODES } from './codes.js';
+import { toResult } from './result.js';
+import { DbfFormatError } from './dbffile.js';
+import { FileFormatError, groupFile } from './files.js';
+import { ZipError } from './zip.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
@@ -23,7 +26,6 @@ const WEB_HEADERS = {
     'referrer-policy': 'no-referrer',
     'x-frame-options': 'DENY',
 };
-const DBF_TYPES = ['application/octet-stream', 'application/x-dbase', 'application/x-dbf', 'application/dbf', 'application/vnd.dbf'];
 
 // ---------- JSON schemas (also used for the OpenAPI page at /docs) ----------
 
@@ -108,39 +110,6 @@ const errorSchema = {
 
 // ---------- helpers ----------
 
-function toResult(index, ref, version, pool, out, notes) {
-    const drg = out.DRG || null;
-    const err = out.ERR ?? 0;
-    const warn = out.WARN ?? 0;
-    const age = out.AGE === '' || out.AGE === undefined ? null : Number(out.AGE);
-    const ageDay = out.AGEDAY === '' || out.AGEDAY === undefined ? null : Number(out.AGEDAY);
-    return {
-        index,
-        ref: ref ?? null,
-        ok: true,
-        version,
-        engine: pool.engine,
-        drg,
-        dc: out.DC ?? null,
-        pcl: out.PCL ?? null,
-        pdxUsed: out.PDXUSED ?? null,
-        drgName: drg ? pool.drgTable.get(drg)?.name ?? null : null,
-        mdc: out.MDC || null,
-        rw: out.RW,
-        adjrw: out.ADJRW,
-        wtlos: out.WTLOS,
-        ot: out.OT,
-        los: out.ACTLOS,
-        age: Number.isFinite(age) ? age : null,
-        ageDay: Number.isFinite(ageDay) ? ageDay : null,
-        errorCode: err,
-        error: describeError(err),
-        warningCode: warn,
-        warnings: describeWarnings(warn),
-        notes,
-    };
-}
-
 function sameSecret(a, b) {
     const ha = createHash('sha256').update(a).digest();
     const hb = createHash('sha256').update(b).digest();
@@ -195,7 +164,7 @@ export async function buildApp(config, runner, fastifyOptions = {}) {
         if (err.validation) {
             return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: err.message });
         }
-        if (err instanceof DbfFormatError) {
+        if (err instanceof DbfFormatError || err instanceof FileFormatError || err instanceof ZipError) {
             return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: err.message });
         }
         if (err instanceof InputError) {
@@ -345,33 +314,40 @@ export async function buildApp(config, runner, fastifyOptions = {}) {
         };
     });
 
-    // The raw .dbf is the body: no multipart, so nothing is written to a temp file.
+    // The raw file is the body: no multipart, so nothing is written to a temp file.
+    // Any Content-Type is taken; the kind of file is told from its bytes.
     await app.register(async (scope) => {
-        scope.addContentTypeParser(DBF_TYPES, { parseAs: 'buffer' }, (req, body, done) => done(null, body));
+        scope.removeAllContentTypeParsers();
+        scope.addContentTypeParser('*', { parseAs: 'buffer' }, (req, body, done) => done(null, body));
         scope.post('/api/v1/group/file', {
             schema: {
                 tags: ['grouper'],
-                summary: 'Group a .dbf data file and get it back with the results',
+                summary: 'Group a .dbf, .csv, .xlsx or .json file and get it back with the results',
                 description: [
-                    'Send the .dbf file that TGrp6305.exe used to read (the grouper layout: DOB, SEX, DATEADM, TIMEADM, DATEDSC, TIMEDSC, DISCHT, ADMWT, AGE, AGEDAY, PDX, SDX1-12, PROC1-20, LEAVEDAY) as the raw body, Content-Type application/octet-stream.',
-                    'The answer is the same file with DRG, MDC, ERR, WARN, RW, ADJRW, WTLOS, OT and ACTLOS filled in. Every other byte stays as it was (other columns, Thai text, deleted records). Result fields the file does not have are added at the end of each record.',
-                    `The fields are read as the exe reads them, without clean-up. At most ${config.maxFileRecords} records. A summary is in the X-Grouper-Summary header (JSON). The file is handled in memory only; it is not stored or logged.`,
+                    'Send the file as the raw body (any Content-Type, for example application/octet-stream). The kind of file is told from its bytes.',
+                    '**.dbf**: the file that TGrp6305.exe used to read (DOB, SEX, DATEADM, TIMEADM, DATEDSC, TIMEDSC, DISCHT, ADMWT, AGE, AGEDAY, PDX, SDX1-12, PROC1-20, LEAVEDAY). The answer is the same file with DRG, MDC, ERR, WARN, RW, ADJRW, WTLOS, OT and ACTLOS filled in; every other byte stays as it was. The fields are read as the exe reads them, without clean-up.',
+                    '**.csv / .xlsx**: a header row (within the first 20 rows) with a PDX column; the other columns use the API names (sex, dob, admitDate, …) or the .dbf names. SDX and procedure lists can be one column (split on , ; or space) or SDX1…, PROC1… columns. Dates as YYYY-MM-DD or DD/MM/YYYY, years in the Buddhist era are taken as such. The answer is the same file with DRG, DRGNAME, MDC, RW, ADJRW, WTLOS, OT, ACTLOS, ERR, ERRMSG, WARN, WARNMSG and GRPNOTE columns (written over when the file has them). A .csv can be UTF-8 or Windows-874 (TIS-620); the first sheet of an .xlsx with a PDX column is used. Old .xls files are not read.',
+                    '**.json**: an array of cases, or an object with a `cases` array, as /api/v1/group/batch takes. Each case gets a `result`.',
+                    `At most ${config.maxFileRecords} records. A summary is in the X-Grouper-Summary header (JSON). The file is handled in memory only; it is not stored or logged.`,
                 ].join('\n\n'),
-                consumes: DBF_TYPES,
                 querystring: { type: 'object', properties: { version: versionParam } },
-                produces: ['application/octet-stream'],
+                produces: ['application/octet-stream', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/json'],
             },
         }, async (req, reply) => {
             const pool = poolFor(req.query.version);
-            if (!Buffer.isBuffer(req.body)) {
-                return reply.code(415).send({ statusCode: 415, error: 'Unsupported Media Type', message: 'send the .dbf file as the body with Content-Type application/octet-stream' });
+            if (!Buffer.isBuffer(req.body) || !req.body.length) {
+                return reply.code(400).send({ statusCode: 400, error: 'Bad Request', message: 'send the .dbf, .csv, .xlsx or .json file as the request body' });
             }
-            const { file, summary } = await groupDbf(req.body, (records) => runner.group(pool.version, records), { maxRecords: config.maxFileRecords });
+            const { format, file, summary, contentType, ext } = await groupFile(req.body, {
+                group: (records) => runner.group(pool.version, records),
+                pool,
+                maxRecords: config.maxFileRecords,
+            });
             return reply
-                .header('content-type', 'application/octet-stream')
-                .header('content-disposition', 'attachment; filename="grouped.dbf"')
+                .header('content-type', contentType)
+                .header('content-disposition', `attachment; filename="grouped.${ext}"`)
                 .header('cache-control', 'no-store')
-                .header('x-grouper-summary', JSON.stringify({ version: pool.version, ...summary }))
+                .header('x-grouper-summary', JSON.stringify({ version: pool.version, format, ...summary }))
                 .send(file);
         });
     });

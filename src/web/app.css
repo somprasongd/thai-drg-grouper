@@ -220,6 +220,13 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 /* ---------- file */
 .file-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 @media (max-width: 880px) { .file-layout { grid-template-columns: minmax(0, 1fr); } }
+.formats { margin: -.25rem 0 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.formats summary { cursor: pointer; padding: .55rem .85rem; font-weight: 600; font-size: .92rem; color: var(--accent); }
+.formats summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 10px; }
+.formats ul { margin: 0; padding: 0 1rem .75rem 2rem; color: var(--muted); font-size: .9rem; line-height: 1.6; }
+.formats li + li { margin-top: .35rem; }
+.formats b { color: var(--text); }
+.formats code { font-size: .85em; overflow-wrap: anywhere; }
 .drop {
   position: relative; display: grid; place-items: center; gap: .3rem; text-align: center;
   border: 2px dashed var(--line); border-radius: var(--radius); padding: 2rem 1rem; cursor: pointer;

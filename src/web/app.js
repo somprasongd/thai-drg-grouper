@@ -397,17 +397,24 @@
         $('#file-name').textContent = file.name;
         $('#file-picked').hidden = false;
         drop.hidden = true;
-        if (!/\.dbf$/i.test(file.name)) {
-            $('#file-meta').textContent = 'ต้องเป็นไฟล์ .dbf';
+        if (/\.xls$/i.test(file.name)) {
+            $('#file-meta').textContent = 'ไฟล์ .xls รุ่นเก่า ให้บันทึกเป็น .xlsx หรือ .csv ก่อน';
+            return;
+        }
+        if (!/\.(dbf|csv|xlsx|json)$/i.test(file.name)) {
+            $('#file-meta').textContent = 'ต้องเป็นไฟล์ .dbf, .csv, .xlsx หรือ .json';
             return;
         }
         if (file.size > MAX_BYTES) {
             $('#file-meta').textContent = `${size(file.size)} ใหญ่เกิน 50 MB`;
             return;
         }
-        // the record count is in the header: bytes 4-7
-        const head = new DataView(await file.slice(0, 32).arrayBuffer());
-        const count = head.byteLength >= 8 ? head.getUint32(4, true) : null;
+        // a .dbf has the record count in its header: bytes 4-7
+        let count = null;
+        if (/\.dbf$/i.test(file.name)) {
+            const head = new DataView(await file.slice(0, 32).arrayBuffer());
+            count = head.byteLength >= 8 ? head.getUint32(4, true) : null;
+        }
         $('#file-meta').textContent = `${size(file.size)}${count !== null ? ` · ${int(count)} รายการ` : ''}`;
         picked = file;
         fileBtn.disabled = false;
@@ -437,7 +444,15 @@
     function showFileResult(summary, blob, name) {
         if (downloadUrl) URL.revokeObjectURL(downloadUrl);
         downloadUrl = URL.createObjectURL(blob);
-        const outName = name.replace(/\.dbf$/i, '') + '_drg.dbf';
+        const ext = summary.format || (/\.(\w+)$/.exec(name)?.[1] ?? 'dbf').toLowerCase();
+        const outName = `${name.replace(/\.\w+$/, '')}_drg.${ext}`;
+        const tabular = ext === 'csv' || ext === 'xlsx';
+        const notes = [];
+        if (summary.sheet) notes.push(`ใช้ชีต "${summary.sheet}"`);
+        if (ext === 'dbf' && summary.addedFields?.length) notes.push(`ไฟล์ไม่มีคอลัมน์ ${summary.addedFields.join(', ')} จึงเพิ่มไว้ท้ายแต่ละรายการ`);
+        if (tabular && summary.addedFields?.length) notes.push(`เพิ่มคอลัมน์ ${summary.addedFields.join(', ')} ต่อจากคอลัมน์สุดท้าย`);
+        if (ext === 'json') notes.push('แต่ละรายการได้ฟิลด์ result');
+        if (summary.skipped) notes.push(`ข้าม ${int(summary.skipped)} ${ext === 'json' ? 'รายการที่ไม่ใช่ object' : 'แถวว่าง'}`);
         const tile = (label, value, hl) => h('div', { class: hl ? 'stat hl' : 'stat' }, h('dt', {}, label), h('dd', {}, value));
         const errs = Object.entries(summary.errors || {}).sort((a, b) => b[1] - a[1]);
         fileResult.hidden = false;
@@ -451,11 +466,12 @@
                 tile('มีคำเตือน', int(summary.withWarning)),
                 tile('รวม AdjRW', nf(summary.sumAdjRw)),
                 tile('CMI', nf(summary.cmi)),
-                tile('ถูกลบ (ข้าม)', int(summary.deleted))),
+                ext === 'dbf' ? tile('ถูกลบ (ข้าม)', int(summary.deleted)) : tile('ข้อมูลไม่ถูกต้อง', int(summary.rejected))),
             errs.length ? h('table', { class: 'tbl' },
                 h('thead', {}, h('tr', {}, h('th', {}, 'Error'), h('th', {}, 'ความหมาย'), h('th', { class: 'num' }, 'ราย'))),
                 h('tbody', {}, errs.map(([code, n]) => h('tr', {}, h('td', { class: 'num' }, code), h('td', {}, ERRORS_TH[code] || ''), h('td', { class: 'num' }, int(n)))))) : null,
-            summary.addedFields?.length ? h('ul', { class: 'msgs note' }, h('li', {}, `ไฟล์ไม่มีคอลัมน์ ${summary.addedFields.join(', ')} จึงเพิ่มไว้ท้ายแต่ละรายการ`)) : null,
+            summary.rejected ? h('ul', { class: 'msgs warn' }, h('li', {}, `${int(summary.rejected)} รายการมีข้อมูลไม่ถูกต้องจึงไม่ได้จัดกลุ่ม ดูเหตุผลที่${ext === 'json' ? ' result.inputErrors' : 'คอลัมน์ GRPNOTE'}`)) : null,
+            notes.length ? h('ul', { class: 'msgs note' }, notes.map((n) => h('li', {}, n))) : null,
             summary.overflow ? h('ul', { class: 'msgs warn' }, h('li', {}, `${int(summary.overflow)} ค่าไม่พอกับความกว้างของคอลัมน์ในไฟล์ จึงใส่ * แทน`)) : null,
             h('a', { class: 'btn primary download', href: downloadUrl, download: outName }, `ดาวน์โหลด ${outName}`),
         );

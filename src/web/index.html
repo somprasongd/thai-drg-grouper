@@ -31,7 +31,7 @@
 <main class="wrap">
   <div class="tabs" role="tablist" aria-label="วิธีใช้งาน">
     <button type="button" role="tab" id="tab-form" aria-controls="panel-form" aria-selected="true">กรอกข้อมูลผู้ป่วย</button>
-    <button type="button" role="tab" id="tab-file" aria-controls="panel-file" aria-selected="false" tabindex="-1">อัปโหลดไฟล์ dbf</button>
+    <button type="button" role="tab" id="tab-file" aria-controls="panel-file" aria-selected="false" tabindex="-1">อัปโหลดไฟล์</button>
   </div>
 
   <!-- ------------------------------------------------------------ form -->
@@ -141,11 +141,19 @@
     <div class="file-layout">
       <div class="card">
         <h2>จัดกลุ่มทั้งไฟล์</h2>
-        <p class="muted">ใช้ไฟล์ .dbf รูปแบบเดียวกับที่เคยส่งให้โปรแกรม TGrp6305 ได้ไฟล์เดิมกลับไป พร้อมผลในคอลัมน์ DRG, MDC, ERR, WARN, RW, ADJRW, WTLOS, OT และ ACTLOS คอลัมน์อื่นและข้อความภาษาไทยยังอยู่ครบ</p>
+        <p class="muted">ส่งไฟล์ .dbf, .csv, Excel (.xlsx) หรือ .json ได้ไฟล์ชนิดเดิมกลับไปพร้อมผลการจัดกลุ่ม คอลัมน์อื่นและข้อความภาษาไทยยังอยู่ครบ</p>
+        <details class="formats">
+          <summary>รูปแบบไฟล์ที่รับ</summary>
+          <ul>
+            <li><b>.dbf</b> รูปแบบเดียวกับที่เคยส่งให้โปรแกรม TGrp6305 ผลอยู่ในคอลัมน์ DRG, MDC, ERR, WARN, RW, ADJRW, WTLOS, OT และ ACTLOS</li>
+            <li><b>.csv / .xlsx</b> แถวหัวตาราง (ภายใน 20 แถวแรก) ต้องมีคอลัมน์ PDX คอลัมน์อื่นใช้ชื่อแบบ API (sex, dob, admitDate, admitTime, dischargeDate, dischargeTime, dischargeType, sdx, procedures) หรือแบบ dbf (SEX, DOB, DATEADM, TIMEADM, SDX1…, PROC1…) ก็ได้ วันที่เป็น ปปปป-ดด-วว หรือ วว/ดด/ปปปป ใช้ปี พ.ศ. ได้ ผลจะเพิ่มเป็นคอลัมน์ DRG, DRGNAME, MDC, RW, ADJRW, WTLOS, OT, ACTLOS, ERR, ERRMSG, WARN, WARNMSG และ GRPNOTE (ถ้ามีคอลัมน์ชื่อนี้อยู่แล้วจะเขียนทับ) ไฟล์ .csv เป็น UTF-8 หรือ TIS-620 ก็ได้ ไฟล์ .xls รุ่นเก่าให้บันทึกเป็น .xlsx ก่อน</li>
+            <li><b>.json</b> อาร์เรย์ของรายการแบบเดียวกับ <code>/api/v1/group/batch</code> แต่ละรายการจะได้ฟิลด์ <code>result</code></li>
+          </ul>
+        </details>
         <label class="drop" id="drop">
-          <input type="file" id="file-input" accept=".dbf,.DBF">
+          <input type="file" id="file-input" accept=".dbf,.csv,.xlsx,.json,.DBF,.CSV,.XLSX,.JSON">
           <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V11m0 0-8 8m8-8 8 8M10 31v4a4 4 0 0 0 4 4h20a4 4 0 0 0 4-4v-4" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
-          <span class="drop-main">ลากไฟล์ .dbf มาวาง หรือ <u>เลือกไฟล์</u></span>
+          <span class="drop-main">ลากไฟล์ .dbf .csv .xlsx หรือ .json มาวาง หรือ <u>เลือกไฟล์</u></span>
           <span class="drop-sub" id="file-limit">ไฟล์เดียว ไม่เกิน 50 MB</span>
         </label>
         <div class="file-picked" id="file-picked" hidden>

@@ -174,11 +174,14 @@ describe('HTTP: file endpoint and web UI', () => {
     });
 
     test('bad uploads are 4xx', async () => {
-        const junk = await app.inject({ method: 'POST', url: '/api/v1/group/file', payload: Buffer.from('not a dbf'), headers: { 'content-type': 'application/octet-stream' } });
+        const junk = await app.inject({ method: 'POST', url: '/api/v1/group/file', payload: Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2]), headers: { 'content-type': 'application/octet-stream' } });
         assert.equal(junk.statusCode, 400);
-        assert.match(junk.json().message, /not a dbf/);
+        assert.match(junk.json().message, /not a .dbf, .csv/);
+        const cut = await app.inject({ method: 'POST', url: '/api/v1/group/file', payload: sampleFile().subarray(0, 600), headers: { 'content-type': 'application/octet-stream' } });
+        assert.equal(cut.statusCode, 400);
+        assert.match(cut.json().message, /dbf|cut short/);
         const json = await app.inject({ method: 'POST', url: '/api/v1/group/file', payload: { a: 1 } });
-        assert.equal(json.statusCode, 415);
+        assert.equal(json.statusCode, 400);
         const version = await app.inject({ method: 'POST', url: '/api/v1/group/file?version=9.9', payload: sampleFile(), headers: { 'content-type': 'application/octet-stream' } });
         assert.equal(version.statusCode, 400);
     });
